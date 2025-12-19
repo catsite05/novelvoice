@@ -1,0 +1,19 @@
+{
+  "voices": {
+    "Male": {
+      "Passion": "zh-CN-YunjianNeural",
+      "Lively": "zh-CN-YunxiNeural",
+      "Sunshine": "zh-CN-YunxiNeural",
+      "Cute": "zh-CN-YunxiaNeural",
+      "Professional": "zh-CN-YunyangNeural",
+      "Reliable": "zh-CN-YunyangNeural"
+    },
+    "Female": {
+      "Warm": "zh-CN-XiaoxiaoNeural",
+      "Lively": "zh-CN-XiaoyiNeural",
+      "Humorous": "zh-CN-liaoning-XiaobeiNeural",
+      "Bright": "zh-CN-shaanxi-XiaoniNeural"
+    }
+  },
+  "旁白": "zh-CN-YunjianNeural"
+}

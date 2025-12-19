@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NovelVoice - 章节阅读</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .nav-links a {
+            color: #667eea;
+            text-decoration: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .nav-links a:hover {
+            background: rgba(102, 126, 234, 0.1);
+        }
+        
+        .back-link {
+            color: #667eea;
+            text-decoration: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .back-link:hover {
+            background: rgba(102, 126, 234, 0.1);
+            text-decoration: none;
+        }
+        
+        #novelTitle {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        
+        .nav-button {
+            padding: 12px 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 25px;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+        }
+        
+        .nav-button:hover:not(.disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .nav-button.disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .chapter-title {
+            text-align: center;
+            font-size: 28px;
+            margin: 30px 0;
+            color: #333;
+            font-weight: bold;
+        }
+        
+        .chapter-content {
+            font-size: 18px;
+            color: #444;
+            white-space: pre-wrap;
+            text-align: justify;
+            line-height: 1.5;
+            margin-bottom: 30px;
+        }
+        
+        .chapter-content p {
+            margin-bottom: 20px;
+            text-indent: 2em;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-size: 1.1em;
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+            }
+            
+            .header {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .chapter-title {
+                font-size: 24px;
+            }
+            
+            .chapter-content {
+                font-size: 16px;
+            }
+            
+            .nav-button {
+                padding: 10px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/novels/list" class="back-link">&larr; 小说列表</a>
+            <div class="nav-links">
+                <a href="/">🏠 首页</a>
+                <a href="#" id="audiobookLink">🎵 有声书</a>
+            </div>
+            <span id="novelTitle"></span>
+        </div>
+    
+    <div class="chapter-title" id="chapterTitle">加载中...</div>
+    
+    <div class="chapter-content" id="chapterContent">
+        <div class="loading">正在加载章节内容...</div>
+    </div>
+    
+    <div class="navigation">
+        <a href="#" id="prevChapter" class="nav-button disabled">上一章</a>
+        <a href="#" id="tocLink" class="nav-button">目录</a>
+        <a href="#" id="nextChapter" class="nav-button">下一章</a>
+    </div>
+
+    <script>
+        // Get parameters from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const novelId = urlParams.get('novel_id');
+        const chapterId = urlParams.get('chapter_id');
+        
+        // Debug: Log parameters
+        console.log('novelId:', novelId, 'type:', typeof novelId);
+        console.log('chapterId:', chapterId, 'type:', typeof chapterId);
+        
+        // Global variables to store novel and chapter data
+        let novelData = null;
+        let chaptersData = [];
+        let currentChapterIndex = -1;
+        
+        // Fetch novel information
+        fetch(`/novels`)
+            .then(response => response.json())
+            .then(data => {
+                novelData = data.novels.find(novel => novel.id == novelId);
+                if (novelData) {
+                    document.getElementById('novelTitle').textContent = novelData.title;
+                }
+            });
+        
+        // Fetch chapters for this novel
+        fetch(`/chapters?novel_id=${novelId}`)
+            .then(response => response.json())
+            .then(data => {
+                chaptersData = data.chapters;
+                
+                // Find current chapter index
+                currentChapterIndex = chaptersData.findIndex(chapter => chapter.id == chapterId);
+                
+                // Load the chapter content
+                loadChapterContent(chapterId);
+                
+                // Update navigation buttons
+                updateNavigation();
+            });
+        
+        // Load chapter content
+        function loadChapterContent(chapterId) {
+            // Show loading indicator
+            document.getElementById('chapterContent').innerHTML = '<div class="loading">正在加载章节内容...</div>';
+            
+            // Debug: Log parameters being sent
+            console.log('Sending request with novelId:', novelId, 'chapterId:', chapterId);
+            
+            // Fetch chapter content from the novel file
+            const url = `/chapter-content?novel_id=${novelId}&chapter_id=${chapterId}`;
+            console.log('Request URL:', url);
+            
+            fetch(url)
+                .then(response => {
+                    console.log('Response status:', response.status);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.content) {
+                        document.getElementById('chapterTitle').textContent = data.title;
+                        document.getElementById('chapterContent').innerHTML = `<p>${data.content.replace(/\n/g, '</p><p>')}</p>`;
+                    } else {
+                        document.getElementById('chapterContent').innerHTML = '<p>无法加载章节内容。</p>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading chapter content:', error);
+                    document.getElementById('chapterContent').innerHTML = `<p>加载章节内容时出错: ${error.message}</p>`;
+                });
+        }
+        
+        // Update navigation buttons
+        function updateNavigation() {
+            const prevButton = document.getElementById('prevChapter');
+            const nextButton = document.getElementById('nextChapter');
+            const tocLink = document.getElementById('tocLink');
+            const audiobookLink = document.getElementById('audiobookLink');
+            
+            // Set up table of contents link
+            tocLink.href = `/toc?novel_id=${novelId}`;
+            
+            // Set up audiobook link with current chapter
+            audiobookLink.href = `/player?novel_id=${novelId}&chapter_id=${chapterId}`;
+            
+            // Previous chapter
+            if (currentChapterIndex > 0) {
+                const prevChapterId = chaptersData[currentChapterIndex - 1].id;
+                prevButton.href = `/reader?novel_id=${novelId}&chapter_id=${prevChapterId}`;
+                prevButton.classList.remove('disabled');
+            } else {
+                prevButton.classList.add('disabled');
+            }
+            
+            // Next chapter
+            if (currentChapterIndex < chaptersData.length - 1) {
+                const nextChapterId = chaptersData[currentChapterIndex + 1].id;
+                nextButton.href = `/reader?novel_id=${novelId}&chapter_id=${nextChapterId}`;
+            } else {
+                nextButton.classList.add('disabled');
+            }
+        }
+    </script>
+</body>
+</html>

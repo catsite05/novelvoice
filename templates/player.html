@@ -1,0 +1,228 @@
+!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NovelVoice - 有声书播放器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .player-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .player-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+        
+        .novel-title {
+            color: #333;
+            font-size: 1.8em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .chapter-title {
+            color: #667eea;
+            font-size: 1.3em;
+            margin-bottom: 30px;
+        }
+        
+        .audio-player {
+            width: 100%;
+            margin-bottom: 30px;
+            outline: none;
+        }
+        
+        .player-info {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+        
+        .nav-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .nav-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            padding: 12px 25px;
+            border-radius: 25px;
+            transition: all 0.3s ease;
+            font-size: 0.95em;
+            border: none;
+            cursor: pointer;
+        }
+        
+        .nav-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .nav-button.secondary {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+        }
+        
+        .nav-button.secondary:hover {
+            background: rgba(102, 126, 234, 0.2);
+        }
+        
+        .loading {
+            color: #667eea;
+            font-size: 1.2em;
+        }
+        
+        .error {
+            color: #ff4757;
+            font-size: 1.1em;
+        }
+        
+        @media (max-width: 600px) {
+            .player-container {
+                padding: 25px;
+            }
+            
+            .novel-title {
+                font-size: 1.4em;
+            }
+            
+            .chapter-title {
+                font-size: 1.1em;
+            }
+            
+            .player-icon {
+                font-size: 3em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="player-container">
+        <div class="player-icon">🎧</div>
+        <div id="content">
+            <div class="loading">正在加载...</div>
+        </div>
+    </div>
+
+    <script>
+        // 获取URL参数
+        const urlParams = new URLSearchParams(window.location.search);
+        const novelId = urlParams.get('novel_id');
+        const chapterId = urlParams.get('chapter_id');
+        
+        let novelTitle = '';
+        let chapterTitle = '';
+        
+        // 检查必需参数
+        if (!novelId || !chapterId) {
+            document.getElementById('content').innerHTML = `
+                <div class="error">缺少必需参数</div>
+                <div class="player-info">请从章节阅读页面点击"有声书"按钮进入</div>
+                <div class="nav-buttons">
+                    <a href="/novels/list" class="nav-button">返回小说列表</a>
+                </div>
+            `;
+        } else {
+            // 加载小说和章节信息
+            Promise.all([
+                fetch('/novels').then(r => r.json()),
+                fetch(`/chapters?novel_id=${novelId}`).then(r => r.json())
+            ])
+            .then(([novelsData, chaptersData]) => {
+                // 获取小说标题
+                const novel = novelsData.novels.find(n => n.id == novelId);
+                novelTitle = novel ? novel.title : '未知小说';
+                
+                // 获取章节标题
+                const chapter = chaptersData.chapters.find(c => c.id == chapterId);
+                chapterTitle = chapter ? chapter.title : '未知章节';
+                
+                // 渲染播放器界面
+                renderPlayer();
+                
+                // 自动开始播放
+                setTimeout(() => {
+                    const audioPlayer = document.getElementById('audioPlayer');
+                    audioPlayer.play().catch(e => {
+                        console.log('自动播放失败，需要用户手动点击播放', e);
+                    });
+                }, 500);
+            })
+            .catch(error => {
+                console.error('加载失败:', error);
+                document.getElementById('content').innerHTML = `
+                    <div class="error">加载失败</div>
+                    <div class="player-info">${error.message}</div>
+                    <div class="nav-buttons">
+                        <a href="/novels/list" class="nav-button">返回小说列表</a>
+                    </div>
+                `;
+            });
+        }
+        
+        // 渲染播放器界面
+        function renderPlayer() {
+            document.getElementById('content').innerHTML = `
+                <div class="novel-title">${novelTitle}</div>
+                <div class="chapter-title">${chapterTitle}</div>
+                
+                <audio id="audioPlayer" class="audio-player" controls autoplay>
+                    <source src="/stream/${chapterId}" type="audio/mpeg">
+                    您的浏览器不支持音频播放
+                </audio>
+                
+                <div class="player-info">
+                    <p>📱 支持后台播放</p>
+                    <p>🎵 享受流畅的有声书体验</p>
+                </div>
+                
+                <div class="nav-buttons">
+                    <a href="/reader?novel_id=${novelId}&chapter_id=${chapterId}" class="nav-button secondary">返回阅读</a>
+                    <a href="/toc?novel_id=${novelId}" class="nav-button">章节目录</a>
+                </div>
+            `;
+        }
+        
+        // 移动端后台播放支持
+        document.addEventListener('DOMContentLoaded', function() {
+            document.body.addEventListener('touchstart', function() {
+                const audioPlayer = document.getElementById('audioPlayer');
+                if (audioPlayer && audioPlayer.paused) {
+                    audioPlayer.play().then(() => {
+                        audioPlayer.pause();
+                    }).catch(e => console.log("Audio initialization failed:", e));
+                }
+            }, { once: true });
+        });
+    </script>
+</body>
+</html>

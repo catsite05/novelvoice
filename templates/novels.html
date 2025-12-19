@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NovelVoice - 小说管理</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        
+        h1 {
+            color: #333;
+            font-size: 2em;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .nav-links a {
+            color: #667eea;
+            text-decoration: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .nav-links a:hover {
+            background: rgba(102, 126, 234, 0.1);
+        }
+        
+        .novel-list {
+            margin-bottom: 30px;
+        }
+        
+        .novel-list-title {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            text-align: center;
+        }
+        
+        .novel-item {
+            padding: 20px;
+            border: 1px solid #ddd;
+            margin-bottom: 15px;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: relative;
+            cursor: pointer;
+        }
+        
+        .novel-item:hover {
+            background-color: #f5f5f5;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .delete-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #ff4757;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .novel-item:hover .delete-btn {
+            opacity: 1;
+        }
+        
+        .delete-btn:hover {
+            background: #ff6b81;
+            transform: scale(1.1);
+        }
+        
+        .novel-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .novel-author {
+            color: #667eea;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        
+        .novel-date {
+            color: #999;
+            font-size: 0.9em;
+        }
+        
+        .empty-message {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-size: 1.1em;
+        }
+        
+        .upload-section {
+            text-align: center;
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(102, 126, 234, 0.05);
+            border-radius: 15px;
+        }
+        
+        .upload-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            padding: 12px 25px;
+            border-radius: 25px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        
+        .upload-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+            }
+            
+            .header {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            h1 {
+                font-size: 1.5em;
+            }
+            
+            .novel-item {
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📚 小说管理</h1>
+            <div class="nav-links">
+                <a href="/">🏠 首页</a>
+            </div>
+        </div>
+        
+        <h2 class="novel-list-title">我的小说收藏</h2>
+    
+    <div class="novel-list" id="novelList">
+        <!-- Novels will be loaded here -->
+    </div>
+    
+    <div class="upload-section">
+        <p>想要添加更多小说？</p>
+        <a href="/" class="upload-btn">📤 上传新小说</a>
+    </div>
+    
+    <script>
+        // Fetch novels from the API
+        fetch('/novels')
+            .then(response => response.json())
+            .then(data => {
+                const novelList = document.getElementById('novelList');
+                if (data.novels && data.novels.length > 0) {
+                    data.novels.forEach(novel => {
+                        const novelDiv = document.createElement('div');
+                        novelDiv.className = 'novel-item';
+                        novelDiv.innerHTML = `
+                            <div class="novel-title">${novel.title}</div>
+                            <div class="novel-author">作者: ${novel.author || '未知'}</div>
+                            <div class="novel-date">上传时间: ${novel.upload_date ? new Date(novel.upload_date).toLocaleString() : '未知'}</div>
+                            <button class="delete-btn" onclick="deleteNovel(event, ${novel.id}, '${novel.title}')">×</button>
+                        `;
+                        // 点击小说卡片跳转到章节列表
+                        novelDiv.addEventListener('click', function() {
+                            window.location.href = '/toc?novel_id=' + novel.id;
+                        });
+                        novelList.appendChild(novelDiv);
+                    });
+                } else {
+                    novelList.innerHTML = '<div class="empty-message">暂无小说，请先上传。</div>';
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching novels:', error);
+                document.getElementById('novelList').innerHTML = '<div class="empty-message">加载小说列表失败。</div>';
+            });
+        
+        // Delete novel function
+        function deleteNovel(event, novelId, novelTitle) {
+            event.stopPropagation(); // Prevent the click from bubbling to the parent div
+            
+            // Confirm deletion
+            if (confirm(`确定要删除小说《${novelTitle}》吗？此操作不可恢复！`)) {
+                fetch(`/novels/delete/${novelId}`, {
+                    method: 'DELETE'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('小说删除成功！');
+                        // Reload the page to reflect changes
+                        location.reload();
+                    } else {
+                        alert(`删除失败: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error deleting novel:', error);
+                    alert('删除小说时发生错误！');
+                });
+            }
+        }
+    </script>
+</div>
+</body>
+</html>

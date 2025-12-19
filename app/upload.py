@@ -1,0 +1,50 @@
+from flask import request, jsonify
+import os
+from datetime import datetime
+from models import Novel, Chapter, db
+from chapter import split_novel_into_chapters
+
+def upload_file(app):
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'message': '未找到上传文件'}), 400
+    
+    file = request.files['file']
+    
+    if file.filename == '':
+        return jsonify({'success': False, 'message': '未选择文件'}), 400
+    
+    if file and file.filename.endswith('.txt'):
+        try:
+            # Get novel title from filename (without extension)
+            novel_title = os.path.splitext(file.filename)[0]
+            
+            # Generate unique filename to avoid conflicts
+            filename = f"{novel_title}_{int(datetime.now().timestamp())}.txt"
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(file_path)
+            
+            # Create a new Novel record
+            new_novel = Novel(
+                title=novel_title,
+                author="Unknown",  # Could be extracted from file metadata or user input
+                file_path=file_path,
+                upload_date=datetime.now()
+            )
+            
+            db.session.add(new_novel)
+            db.session.commit()
+            
+            # Split the novel into chapters
+            chapters_count = split_novel_into_chapters(file_path, new_novel.id)
+            
+            return jsonify({
+                'success': True, 
+                'message': f'小说《{novel_title}》上传成功！已解析 {chapters_count} 个章节',
+                'novel_id': new_novel.id,
+                'novel_title': novel_title
+            }), 200
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': f'上传失败：{str(e)}'}), 500
+    
+    return jsonify({'success': False, 'message': '不支持的文件格式，请上传.txt文件'}), 400

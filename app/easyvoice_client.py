@@ -16,9 +16,59 @@ class EasyVoiceClient:
         """
         self.base_url = base_url or os.getenv('EASYVOICE_BASE_URL', 'http://localhost:3000')
     
+    def generate_audio_stream(self, voice_script: list):
+        """
+        调用EasyVoice API流式生成音频（生成器模式）
+        
+        Args:
+            voice_script (list): 配音脚本内容
+            
+        Yields:
+            bytes: 音频数据块
+        """
+        # 构建API端点URL
+        url = f"{self.base_url}/api/v1/tts/generateJson"
+        
+        # 构建请求数据
+        data = {"data": voice_script}
+        headers = {'Content-Type': 'application/json'}
+        
+        print(f"\n[EasyVoice] 开始流式调用: {url}")
+        print(f"[EasyVoice] 脚本段落数: {len(voice_script)}")
+        
+        try:
+            # 关键：stream=True 启用流式响应
+            response = requests.post(
+                url,
+                headers=headers,
+                json=data,
+                stream=True,  # 启用流式传输
+                timeout=120
+            )
+            response.raise_for_status()
+            
+            print(f"[EasyVoice] 开始接收流式数据...")
+            
+            # 逐块读取并立即 yield
+            chunk_count = 0
+            total_size = 0
+            for chunk in response.iter_content(chunk_size=4096):
+                if chunk:
+                    chunk_count += 1
+                    total_size += len(chunk)
+                    yield chunk
+                    # if chunk_count % 10 == 0:
+                    #     print(f"[EasyVoice] 已接收 {chunk_count} 个块，共 {total_size} 字节")
+            
+            print(f"[EasyVoice] 流式传输完成，总计 {total_size} 字节\n")
+            
+        except requests.exceptions.RequestException as e:
+            print(f"\n❌ [EasyVoice] 流式调用失败: {str(e)}")
+            raise
+    
     def generate_audio(self, voice_script: list, output_path: str) -> bool:
         """
-        调用EasyVoice API生成音频文件
+        调用EasyVoice API生成音频文件（保留兼容性）
         
         Args:
             voice_script (list): 配音脚本内容

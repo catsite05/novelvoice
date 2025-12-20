@@ -1,8 +1,10 @@
 from flask import request, jsonify
 import os
+import threading
 from datetime import datetime
 from models import Novel, Chapter, db
 from chapter import split_novel_into_chapters
+from audio import preprocess_chapter_script
 
 def upload_file(app):
     if 'file' not in request.files:
@@ -37,6 +39,9 @@ def upload_file(app):
             # Split the novel into chapters
             chapters_count = split_novel_into_chapters(file_path, new_novel.id)
             
+            # 启动后台线程为前10章的第一个分段生成配音脚本
+            _start_preprocessing_threads(app, new_novel.id)
+            
             return jsonify({
                 'success': True, 
                 'message': f'小说《{novel_title}》上传成功！已解析 {chapters_count} 个章节',
@@ -48,3 +53,27 @@ def upload_file(app):
             return jsonify({'success': False, 'message': f'上传失败：{str(e)}'}), 500
     
     return jsonify({'success': False, 'message': '不支持的文件格式，请上传.txt文件'}), 400
+
+
+def _start_preprocessing_threads(app, novel_id):
+    """
+    启动后台线程为前10章的第一个分段生成配音脚本
+    """
+    def preprocess_worker():
+        with app.app_context():
+            # 获取前10章
+            chapters = Chapter.query.filter_by(novel_id=novel_id).order_by(Chapter.id).limit(10).all()
+            
+            for chapter in chapters:
+                try:
+                    print(f"[预处理] 开始为章节 {chapter.id} 生成第一个分段的配音脚本...")
+                    preprocess_chapter_script(chapter.id)
+                    print(f"[预处理] 章节 {chapter.id} 的第一个分段配音脚本生成完成")
+                except Exception as e:
+                    print(f"[预处理] 章节 {chapter.id} 预处理失败: {e}")
+                    import traceback
+                    traceback.print_exc()
+    
+    # 在后台线程中执行预处理
+    thread = threading.Thread(target=preprocess_worker, daemon=True)
+    thread.start()

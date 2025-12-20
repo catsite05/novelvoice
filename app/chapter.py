@@ -7,12 +7,44 @@ def delete_novel(novel_id):
     # 获取小说对象
     novel = Novel.query.get_or_404(novel_id)
     
-    # 删除与小说相关的所有章节
+    # 获取项目根目录
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    audio_folder = os.path.join(root_dir, 'audio')
+    script_folder = os.path.join(audio_folder, 'script')
+    
+    # 删除与小说相关的所有章节及对应的音频文件和配音脚本
+    chapters = Chapter.query.filter_by(novel_id=novel_id).all()
+    for chapter in chapters:
+        # 删除按默认路径命名的音频文件
+        default_audio_path = os.path.join(audio_folder, f'chapter_{chapter.id}.mp3')
+        if os.path.exists(default_audio_path):
+            try:
+                os.remove(default_audio_path)
+                print(f"已删除默认路径音频文件: {default_audio_path}")
+            except Exception as e:
+                print(f"删除默认路径音频文件失败 {default_audio_path}: {e}")
+        
+        # 删除该章节的所有配音脚本文件
+        if os.path.exists(script_folder):
+            for script_file in os.listdir(script_folder):
+                if script_file.startswith(f'chapter_{chapter.id}_segment_') and script_file.endswith('_script.json'):
+                    script_path = os.path.join(script_folder, script_file)
+                    try:
+                        os.remove(script_path)
+                        print(f"已删除配音脚本文件: {script_path}")
+                    except Exception as e:
+                        print(f"删除配音脚本文件失败 {script_path}: {e}")
+    
+    # 删除章节记录
     Chapter.query.filter_by(novel_id=novel_id).delete()
     
     # 删除小说文件
     if os.path.exists(novel.file_path):
-        os.remove(novel.file_path)
+        try:
+            os.remove(novel.file_path)
+            print(f"已删除小说文件: {novel.file_path}")
+        except Exception as e:
+            print(f"删除小说文件失败 {novel.file_path}: {e}")
     
     # 删除数据库中的小说记录
     db.session.delete(novel)
@@ -183,32 +215,32 @@ def _read_chapter_content(file_path, start_position, end_position=None):
     
     Args:
         file_path (str): 文件路径
-        start_position (int): 开始位置
-        end_position (int, optional): 结束位置
+        start_position (int): 开始位置（字符位置）
+        end_position (int, optional): 结束位置（字符位置）
         
     Returns:
         str: 章节内容
     """
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
-            # 移动到章节开始位置
-            f.seek(start_position)
+            # 读取整个文件内容
+            content = f.read()
             
+            # 使用字符位置进行切片
             if end_position is not None:
-                # 计算需要读取的字符数
-                size = end_position - start_position
-                content = f.read(size)
+                chapter_content = content[start_position:end_position]
             else:
-                # 读取到文件末尾
-                content = f.read()
-        return content
+                chapter_content = content[start_position:]
+        
+        return chapter_content
     except UnicodeDecodeError:
         # If we encounter a decode error, try reading with error handling
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            f.seek(start_position)
+            content = f.read()
+            
             if end_position is not None:
-                size = end_position - start_position
-                content = f.read(size)
+                chapter_content = content[start_position:end_position]
             else:
-                content = f.read()
-        return content
+                chapter_content = content[start_position:]
+        
+        return chapter_content

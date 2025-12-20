@@ -3,6 +3,8 @@ from flask_sqlalchemy import SQLAlchemy
 from models import db
 from config import Config
 import os
+import threading
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # Get the directory of the current file (app.py)
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -14,6 +16,10 @@ static_dir = os.path.join(root_dir, 'static')  # In case you have static files
 
 app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 app.config.from_object(Config)
+
+# Configure ProxyFix for reverse proxy support
+# This will handle X-Forwarded-Proto, X-Forwarded-Host, X-Forwarded-For headers
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_for=1, x_prefix=1)
 
 db.init_app(app)
 
@@ -98,7 +104,7 @@ def chapter_content():
     from chapter import get_chapter_content
     import traceback
     # Debug: Print received parameters
-    print(f"Received parameters: novel_id={request.args.get('novel_id')}, chapter_id={request.args.get('chapter_id')}")
+    # print(f"Received parameters: novel_id={request.args.get('novel_id')}, chapter_id={request.args.get('chapter_id')}")
     
     # Parse parameters with better error handling
     try:
@@ -115,12 +121,12 @@ def chapter_content():
     except (ValueError, TypeError) as e:
         return jsonify({"error": f"Invalid parameter values. Expected integers. novel_id={request.args.get('novel_id')}, chapter_id={request.args.get('chapter_id')}"}), 400
     
-    print(f"Parsed parameters: novel_id={novel_id}, chapter_id={chapter_id}")
+    # print(f"Parsed parameters: novel_id={novel_id}, chapter_id={chapter_id}")
     
     try:
-        print(f"Calling get_chapter_content with novel_id={novel_id}, chapter_id={chapter_id}")
+        # print(f"Calling get_chapter_content with novel_id={novel_id}, chapter_id={chapter_id}")
         content = get_chapter_content(novel_id, chapter_id)
-        print(f"get_chapter_content returned: {content is not None}")
+        # print(f"get_chapter_content returned: {content is not None}")
         
         if content is None:
             return jsonify({"error": "Chapter not found"}), 404
@@ -132,7 +138,62 @@ def chapter_content():
         traceback.print_exc()
         return jsonify({"error": f"Failed to get chapter content: {str(e)}"}), 500
 
+@app.route('/chapter-script-status')
+def chapter_script_status():
+    from flask import request, jsonify
+    from audio import is_chapter_script_ready
+
+    chapter_id_str = request.args.get('chapter_id')
+    if not chapter_id_str:
+        return jsonify({"error": "Missing chapter_id parameter"}), 400
+
+    try:
+        chapter_id = int(chapter_id_str)
+    except (ValueError, TypeError):
+        return jsonify({"error": f"Invalid chapter_id: {chapter_id_str}"}), 400
+
+    ready = is_chapter_script_ready(chapter_id)
+    return jsonify({"ready": ready})
+
+
+@app.route('/preprocess-chapter-script', methods=['POST'])
+def preprocess_chapter_script_route():
+    from flask import request, jsonify
+    from audio import preprocess_chapter_script
+
+    data = request.get_json(silent=True) or {}
+    chapter_id_value = data.get('chapter_id') or request.args.get('chapter_id')
+
+    if not chapter_id_value:
+        return jsonify({"error": "Missing chapter_id parameter"}), 400
+
+    try:
+        chapter_id = int(chapter_id_value)
+    except (ValueError, TypeError):
+        return jsonify({"error": f"Invalid chapter_id: {chapter_id_value}"}), 400
+
+    # 后台线程执行预处理，避免阻塞请求
+    def worker(ch_id):
+        with app.app_context():
+            preprocess_chapter_script(ch_id)
+
+    thread = threading.Thread(target=worker, args=(chapter_id,), daemon=True)
+    thread.start()
+
+    return jsonify({"started": True})
+
+
+@app.route('/cancel-generation/<int:chapter_id>', methods=['POST'])
+def cancel_generation(chapter_id):
+    """显式取消指定章节的后台生成任务,用于“停止播放”。"""
+    from flask import jsonify
+    from audio import cancel_chapter_generation
+
+    cancelled = cancel_chapter_generation(chapter_id)
+    return jsonify({"cancelled": bool(cancelled)})
+
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5002, debug=False)

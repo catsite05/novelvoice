@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>{% block title %}NovelVoice - 智能有声书{% endblock %}</title>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            padding-bottom: 70px; /* 为全局播放器留出空间 */
+        }
+        
+        /* 全局播放器样式 */
+        .global-audio-player {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2);
+            padding: 12px 15px;
+            padding-bottom: calc(12px + env(safe-area-inset-bottom)); /* iOS 安全区域 */
+            z-index: 9999;
+            display: none;
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+        }
+        
+        .global-audio-player.active {
+            display: block;
+            transform: translateY(0);
+        }
+        
+        .player-content {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .player-info {
+            flex: 1;
+            min-width: 0;
+            color: white;
+        }
+        
+        .player-chapter {
+            font-size: 14px;
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .player-novel {
+            font-size: 12px;
+            opacity: 0.9;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .player-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .player-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            transition: all 0.2s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .player-btn:active {
+            transform: scale(0.95);
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        .player-btn.play-pause {
+            width: 42px;
+            height: 42px;
+            background: rgba(255, 255, 255, 0.95);
+            color: #667eea;
+            font-size: 18px;
+        }
+        
+        .player-progress {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.2);
+            cursor: pointer;
+        }
+        
+        .player-progress-bar {
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+        
+        .player-time {
+            color: white;
+            font-size: 12px;
+            min-width: 80px;
+            text-align: center;
+            opacity: 0.9;
+        }
+        
+        /* 移动端优化 */
+        @media (max-width: 600px) {
+            .player-time {
+                display: none;
+            }
+            
+            .player-chapter {
+                font-size: 13px;
+            }
+            
+            .player-novel {
+                font-size: 11px;
+            }
+        }
+        
+        /* 加载指示器 */
+        .player-loading {
+            display: none;
+            position: absolute;
+            top: 50%;
+            right: 15px;
+            transform: translateY(-50%);
+            color: white;
+            font-size: 12px;
+        }
+        
+        .player-loading.active {
+            display: block;
+        }
+        
+        /* 页面内容区域 */
+        #page-content {
+            min-height: calc(100vh - 70px);
+        }
+    </style>
+    
+    {% block extra_styles %}{% endblock %}
+</head>
+<body>
+    <!-- 页面内容区域 -->
+    <div id="page-content">
+        {% block content %}{% endblock %}
+    </div>
+    
+    <!-- 全局音频播放器 -->
+    <div class="global-audio-player" id="globalPlayer">
+        <div class="player-progress" id="playerProgress">
+            <div class="player-progress-bar" id="playerProgressBar"></div>
+        </div>
+        
+        <div class="player-content">
+            <div class="player-info">
+                <div class="player-chapter" id="playerChapter">未播放</div>
+                <div class="player-novel" id="playerNovel">请选择章节</div>
+            </div>
+            
+            <div class="player-time" id="playerTime">0:00 / 0:00</div>
+            
+            <div class="player-controls">
+                <button class="player-btn" id="btnPrev" title="上一章">⏮</button>
+                <button class="player-btn play-pause" id="btnPlayPause" title="播放/暂停">▶</button>
+                <button class="player-btn" id="btnNext" title="下一章">⏭</button>
+                <button class="player-btn" id="btnClose" title="关闭播放器">✖</button>
+            </div>
+            
+            <div class="player-loading" id="playerLoading">加载中...</div>
+        </div>
+        
+        <!-- 隐藏的 Audio 元素 -->
+        <audio id="globalAudio" preload="metadata"></audio>
+    </div>
+    
+    <!-- 全局播放器脚本 -->
+    <script src="/static/js/global-player.js?v=2.0"></script>
+    
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

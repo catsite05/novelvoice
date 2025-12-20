@@ -18,6 +18,7 @@ class Chapter(db.Model):
     title = db.Column(db.String(200), nullable=False)
     start_position = db.Column(db.Integer, nullable=False)
     audio_file_path = db.Column(db.String(300), nullable=True)
+    audio_status = db.Column(db.String(20), nullable=True)  # 'generating', 'complete', 'failed'
     
     # Foreign key to Novel
     novel_id = db.Column(db.Integer, db.ForeignKey('novel.id'), nullable=False)

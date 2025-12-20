@@ -15,5 +15,6 @@
       "Bright": "zh-CN-shaanxi-XiaoniNeural"
     }
   },
-  "旁白": "zh-CN-YunjianNeural"
+  "旁白": "zh-CN-YunjianNeural",
+  "default-rate": "10%"
 }

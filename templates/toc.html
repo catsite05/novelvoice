@@ -1,10 +1,9 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NovelVoice - 目录</title>
-    <style>
+{% extends "base.html" %}
+
+{% block title %}NovelVoice - 目录{% endblock %}
+
+{% block extra_styles %}
+<style>
         * {
             margin: 0;
             padding: 0;
@@ -135,8 +134,9 @@
             }
         }
     </style>
-</head>
-<body>
+{% endblock %}
+
+{% block content %}
     <div class="container">
         <div class="header">
             <a href="/novels/list" class="back-link">&larr; 小说列表</a>
@@ -152,8 +152,10 @@
     <div class="chapter-list" id="chapterList">
         <div class="empty-message">加载中...</div>
     </div>
+{% endblock %}
 
-    <script>
+{% block extra_scripts %}
+<script>
         // Get novel_id from URL parameters
         const urlParams = new URLSearchParams(window.location.search);
         const novelId = urlParams.get('novel_id');
@@ -197,5 +199,4 @@
                 document.getElementById('chapterList').innerHTML = '<div class="empty-message">加载章节列表失败。</div>';
             });
     </script>
-</body>
-</html>
+{% endblock %}

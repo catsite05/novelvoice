@@ -1,10 +1,9 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NovelVoice - 章节阅读</title>
-    <style>
+{% extends "base.html" %}
+
+{% block title %}NovelVoice - 章节阅读{% endblock %}
+
+{% block extra_styles %}
+<style>
         * {
             margin: 0;
             padding: 0;
@@ -19,8 +18,7 @@
         }
         
         .container {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
+            background: #f9f6f0;
             border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
             padding: 30px;
@@ -49,6 +47,13 @@
             padding: 8px 15px;
             border-radius: 20px;
             transition: all 0.3s ease;
+        }
+        
+        .nav-links a.disabled {
+            background: #ccc;
+            color: #666;
+            cursor: not-allowed;
+            pointer-events: none;
         }
         
         .nav-links a:hover {
@@ -113,6 +118,7 @@
         }
         
         .chapter-content {
+            font-family: "SimSun", "宋体", serif;
             font-size: 18px;
             color: #444;
             white-space: pre-wrap;
@@ -156,8 +162,9 @@
             }
         }
     </style>
-</head>
-<body>
+{% endblock %}
+
+{% block content %}
     <div class="container">
         <div class="header">
             <a href="/novels/list" class="back-link">&larr; 小说列表</a>
@@ -179,8 +186,10 @@
         <a href="#" id="tocLink" class="nav-button">目录</a>
         <a href="#" id="nextChapter" class="nav-button">下一章</a>
     </div>
+{% endblock %}
 
-    <script>
+{% block extra_scripts %}
+<script>
         // Get parameters from URL
         const urlParams = new URLSearchParams(window.location.search);
         const novelId = urlParams.get('novel_id');
@@ -284,7 +293,116 @@
             } else {
                 nextButton.classList.add('disabled');
             }
+
+            // 检查并预处理当前章节的配音脚本
+            initAudiobookPreprocess();
         }
+
+        let scriptCheckTimer = null;
+
+        function setAudiobookDisabled(disabled, text) {
+            const audiobookLink = document.getElementById('audiobookLink');
+            if (!audiobookLink) return;
+            if (disabled) {
+                audiobookLink.classList.add('disabled');
+                if (text) {
+                    audiobookLink.textContent = text;
+                }
+            } else {
+                audiobookLink.classList.remove('disabled');
+                audiobookLink.textContent = '🎵 有声书';
+            }
+        }
+
+        function initAudiobookPreprocess() {
+            if (!chapterId) return;
+
+            // 初始状态：先置灰，避免用户点击
+            setAudiobookDisabled(true, '🎵 有声书(检查中...)');
+
+            fetch(`/chapter-script-status?chapter_id=${chapterId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.ready) {
+                        // 已有脚本，立即启用按钮
+                        setAudiobookDisabled(false);
+                    } else {
+                        // 未生成脚本，置灰并请求后台预处理
+                        setAudiobookDisabled(true, '🎵 有声书(预处理中...)');
+
+                        fetch('/preprocess-chapter-script', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ chapter_id: chapterId })
+                        }).catch(error => {
+                            console.error('Error starting preprocess:', error);
+                        });
+
+                        // 轮询检查脚本是否已生成
+                        if (scriptCheckTimer) {
+                            clearInterval(scriptCheckTimer);
+                        }
+                        scriptCheckTimer = setInterval(() => {
+                            fetch(`/chapter-script-status?chapter_id=${chapterId}`)
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.ready) {
+                                        setAudiobookDisabled(false);
+                                        if (scriptCheckTimer) {
+                                            clearInterval(scriptCheckTimer);
+                                            scriptCheckTimer = null;
+                                        }
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('Error checking script status:', error);
+                                });
+                        }, 5000);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking initial script status:', error);
+                    // 出错时，为了不影响使用，仍然允许用户点击
+                    setAudiobookDisabled(false);
+                });
+        }
+        
+        // 修改有声书链接点击事件，使用全局播放器
+        document.getElementById('audiobookLink').addEventListener('click', function(e) {
+            // 如果按钮被置灰，则不响应点击
+            if (this.classList.contains('disabled')) {
+                e.preventDefault();
+                return;
+            }
+
+            e.preventDefault();
+            
+            // 调用全局播放器播放当前章节
+            if (window.playAudiobook && novelData && chapterId) {
+                const currentChapter = chaptersData.find(ch => ch.id == chapterId);
+                
+                console.log(`请求播放章节 ${chapterId}: ${currentChapter?.title}`);
+                
+                window.playAudiobook(
+                    novelId,
+                    novelData.title,
+                    chapterId,
+                    currentChapter?.title || '未知章节',
+                    chaptersData
+                );
+            }
+        });
+        
+        // 页面加载时，检查是否有正在播放的章节
+        // 如果当前章节正在播放，不重新设置 src
+        window.addEventListener('load', function() {
+            if (window.globalPlayer && window.globalPlayer.currentState.chapterId == chapterId) {
+                console.log('当前章节正在播放，保持播放状态');
+                // 仅显示播放器，不重新加载
+                window.globalPlayer.show();
+            }
+        });
     </script>
-</body>
-</html>
+{% endblock %}

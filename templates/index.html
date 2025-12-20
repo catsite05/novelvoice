@@ -1,10 +1,9 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NovelVoice - 小说转有声书</title>
-    <style>
+{% extends "base.html" %}
+
+{% block title %}NovelVoice - 小说转有声书{% endblock %}
+
+{% block extra_styles %}
+<style>
         * {
             margin: 0;
             padding: 0;
@@ -230,8 +229,9 @@
             }
         }
     </style>
-</head>
-<body>
+{% endblock %}
+
+{% block content %}
     <div class="container">
         <div class="logo">📚🎧</div>
         <h1>NovelVoice</h1>
@@ -269,8 +269,10 @@
             <a href="/novels/list">📚 我的小说</a>
         </div>
     </div>
-    
-    <script>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
         const uploadBtn = document.getElementById('uploadBtn');
@@ -369,5 +371,4 @@
             }, hideDelay);
         }
     </script>
-</body>
-</html>
+{% endblock %}

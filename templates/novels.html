@@ -1,10 +1,9 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NovelVoice - 小说管理</title>
-    <style>
+{% extends "base.html" %}
+
+{% block title %}NovelVoice - 小说管理{% endblock %}
+
+{% block extra_styles %}
+<style>
         * {
             margin: 0;
             padding: 0;
@@ -148,6 +147,10 @@
             border-radius: 15px;
         }
         
+        .upload-section p {
+            margin-bottom: 12px;
+        }
+        
         .upload-btn {
             display: inline-block;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -183,8 +186,9 @@
             }
         }
     </style>
-</head>
-<body>
+{% endblock %}
+
+{% block content %}
     <div class="container">
         <div class="header">
             <h1>📚 小说管理</h1>
@@ -203,8 +207,10 @@
         <p>想要添加更多小说？</p>
         <a href="/" class="upload-btn">📤 上传新小说</a>
     </div>
-    
-    <script>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
         // Fetch novels from the API
         fetch('/novels')
             .then(response => response.json())
@@ -262,5 +268,4 @@
         }
     </script>
 </div>
-</body>
-</html>
+{% endblock %}

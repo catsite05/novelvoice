@@ -82,6 +82,7 @@ def convert_voice_script(voice_script):
             # 如果是旁白
             if segment['charactor'] == '旁白':
                 converted_segment['voice'] = voice_config['旁白']
+                converted_segment['rate'] = voice_config['default-rate']
             else:
                 # 如果是角色对白，从数据库中获取角色信息
                 character = Character.query.filter_by(name=segment['charactor']).first()

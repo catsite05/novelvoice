@@ -295,7 +295,7 @@ class GlobalAudioPlayer {
     }
     
     updatePlayPauseButton() {
-        this.btnPlayPause.textContent = this.audio.paused ? '▶' : '⏸';
+        this.btnPlayPause.textContent = this.audio.paused ? '▶' : '■';
     }
     
     updateProgress() {
@@ -492,8 +492,8 @@ class GlobalAudioPlayer {
                 // 注意：不主动暂停音频，让其继续在后台播放
             } else {
                 // 页面变为可见（从其他页面/应用切换回来）
-                console.log('[iOS优化] 页面恢复可见，检查播放状态');
-                this.handlePageRestored();
+                // console.log('[iOS优化] 页面恢复可见，检查播放状态');
+                // this.handlePageRestored();
             }
         });
         

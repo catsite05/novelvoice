@@ -347,49 +347,69 @@ def stream_chapter(app, chapter_id):
         return send_file(audio_path, mimetype='audio/mpeg')
     
     def stream_existing_file():
-        """流式读取正在增长的文件"""
+        """流式读取正在增长的文件，支持客户端断开连接时优雅退出"""
         position = 0
         no_growth_count = 0
-        last_size = os.path.getsize(audio_path) if os.path.exists(audio_path) else 0
-        
-        while True:
-            # 每次循环都重新打开文件,避免缓存问题
-            try:
-                with open(audio_path, 'rb') as f:                   
-                    while True:
-                        f.seek(position)
-                        chunk = f.read(8192)                        
-                        if chunk:
-                            yield chunk
-                            position += len(chunk)
-                            no_growth_count = 0
-                            continue  # 立即读取下一块
-                        else:
-                            break
-            except FileNotFoundError:
-                print("[播放] 文件尚未不存在，等待文件生成")
-                
-            # 检查文件是否还在增长
-            current_size = last_size
-            no_growth_count = 0
-            while current_size <= last_size:
-                time.sleep(1)
-                no_growth_count += 1
-                # 文件未增长
-                if no_growth_count > 30:  # 60秒未增长
-                    print(f"[播放] 文件长时间未增长,停止读取 (position={position}, size={current_size})")
-                    break
-                # 等待新数据，捕获文件可能被删除的情况
-                try:
-                    current_size = os.path.getsize(audio_path)
-                except FileNotFoundError:
-                    print("[播放] 文件已被删除，停止流式传输")
-                    return
+        last_size = 0
+        client_disconnected = False
 
-            if current_size <= last_size:
-                break
-            else:
-                last_size = current_size
+        try:
+            last_size = os.path.getsize(audio_path)
+        except:
+            print("[播放] 文件尚未存在，等待文件生成")
+        
+        try:
+            while not client_disconnected:
+                # 每次循环都重新打开文件,避免缓存问题
+                try:
+                    with open(audio_path, 'rb') as f:                   
+                        while True:
+                            f.seek(position)
+                            chunk = f.read(8192)                        
+                            if chunk:
+                                try:
+                                    yield chunk
+                                    position += len(chunk)
+                                    no_growth_count = 0
+                                except GeneratorExit:
+                                    # 客户端断开连接
+                                    client_disconnected = True
+                                    return
+                            else:
+                                break
+                except GeneratorExit:
+                    client_disconnected = True
+                    return
+                except Exception:
+                    print("[播放] 文件尚未存在，等待文件生成")
+                    
+                # 检查文件是否还在增长
+                current_size = last_size
+                no_growth_count = 0
+                while current_size <= last_size:
+                    time.sleep(1)
+                    no_growth_count += 1
+                    # 文件未增长超时
+                    if no_growth_count > 30:
+                        print(f"[播放] 文件长时间未增长,停止读取 (position={position}, size={current_size})")
+                        return
+                    # 等待新数据
+                    try:
+                        current_size = os.path.getsize(audio_path)
+                    except:
+                        print("[播放] 文件已被删除，停止流式传输")
+                        return
+
+                if current_size <= last_size:
+                    return
+                else:
+                    last_size = current_size
+                    
+        except GeneratorExit:
+            # 客户端断开连接时静默退出（页面切换时的正常行为）
+            pass
+        except Exception as e:
+            print(f"[播放] 流式传输发生错误: {e}")
             
 
     # 情况2: 文件正在生成中(后台线程在工作)
@@ -623,12 +643,7 @@ def stream_chapter(app, chapter_id):
     script_thread.start()
     audio_thread.start()
     
-    return Response(
-        stream_existing_file(),
-        mimetype='audio/mpeg',
-        headers={
+    return Response(stream_existing_file(), mimetype='audio/mpeg', headers={
             'Cache-Control': 'no-cache',
-            'X-Content-Type-Options': 'nosniff',
-            'Transfer-Encoding': 'chunked'
-        }
-    )
+            'X-Accel-Buffering': 'no'  # 禁用nginx缓冲
+        })

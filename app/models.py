@@ -2,12 +2,28 @@ from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)
+    is_superuser = db.Column(db.Boolean, default=False, nullable=False)
+
+    def __repr__(self):
+        return f'<User {self.username}>'
+
+
 class Novel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
     author = db.Column(db.String(100), nullable=True)
     file_path = db.Column(db.String(300), nullable=False)
     upload_date = db.Column(db.DateTime, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    last_read_chapter_id = db.Column(db.Integer, db.ForeignKey('chapter.id'), nullable=True)  # 最后阅读的章节
+
+    user = db.relationship('User', backref=db.backref('novels', lazy=True))
+    last_read_chapter = db.relationship('Chapter', foreign_keys=[last_read_chapter_id], post_update=True)
     
     def __repr__(self):
         return f'<Novel {self.title}>'

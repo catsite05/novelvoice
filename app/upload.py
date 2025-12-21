@@ -1,4 +1,4 @@
-from flask import request, jsonify
+from flask import request, jsonify, g
 import os
 import threading
 from datetime import datetime
@@ -9,6 +9,11 @@ from audio import preprocess_chapter_script
 def upload_file(app):
     if 'file' not in request.files:
         return jsonify({'success': False, 'message': '未找到上传文件'}), 400
+
+    # 必须登录，且只有当前登录用户作为小说所有者
+    user = getattr(g, 'current_user', None)
+    if user is None:
+        return jsonify({'success': False, 'message': '未登录或登录已过期'}), 401
     
     file = request.files['file']
     
@@ -30,7 +35,8 @@ def upload_file(app):
                 title=novel_title,
                 author="Unknown",  # Could be extracted from file metadata or user input
                 file_path=file_path,
-                upload_date=datetime.now()
+                upload_date=datetime.now(),
+                user_id=user.id,
             )
             
             db.session.add(new_novel)

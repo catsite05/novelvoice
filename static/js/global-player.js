@@ -31,6 +31,9 @@ class GlobalAudioPlayer {
             chapters: []
         };
         
+        // 【调试面板】用于在iPhone上显示调试信息
+        this._initDebugPanel();
+        
         this.init();
     }
     
@@ -43,6 +46,9 @@ class GlobalAudioPlayer {
         
         // 初始化 Media Session API
         this.initMediaSession();
+        
+        // 监听页面可见性变化（iOS Safari 切换页面时的关键）
+        this.handleVisibilityChange();
         
         // 如果有保存的播放状态，恢复播放
         if (this.currentState.chapterId) {
@@ -65,6 +71,30 @@ class GlobalAudioPlayer {
         // 播放/暂停
         this.btnPlayPause.addEventListener('click', () => {
             if (this.audio.paused) {
+                // 【关键修复】点击播放前，检查是否需要恢复位置
+                // 优先使用 _pendingSeekTime，其次使用 currentState.currentTime
+                const pendingTime = this._pendingSeekTime || 0;
+                const savedTime = this.currentState.currentTime || 0;
+                const targetTime = pendingTime > 0 ? pendingTime : savedTime;
+                const currentAudioTime = this.audio.currentTime || 0;
+                
+                this._log(`点击播放: target=${targetTime.toFixed(1)}s, audio=${currentAudioTime.toFixed(1)}s`);
+                
+                // 如果目标位置与当前音频位置相差超过2秒，或者当前位置为0，需要恢复
+                if (targetTime > 0 && (currentAudioTime === 0 || Math.abs(currentAudioTime - targetTime) > 2)) {
+                    this._log(`恢复位置: ${currentAudioTime.toFixed(1)}s → ${targetTime.toFixed(1)}s`);
+                    
+                    // 如果音频已加载完成，直接设置 currentTime
+                    if (this.audio.readyState >= 1) {
+                        this.audio.currentTime = targetTime;
+                        this._pendingSeekTime = 0;
+                    } else {
+                        // 音频还未加载，等待 loadedmetadata 后恢复
+                        this._pendingSeekTime = targetTime;
+                        console.log(`[播放按钮] 音频未加载完成，设置待恢复位置: ${targetTime}秒`);
+                    }
+                }
+                
                 this.play();
             } else {
                 this.pause();
@@ -91,6 +121,7 @@ class GlobalAudioPlayer {
         this.audio.addEventListener('timeupdate', () => this.onTimeUpdate());
         this.audio.addEventListener('loadedmetadata', () => this.onLoadedMetadata());
         this.audio.addEventListener('play', () => this.onPlay());
+        this.audio.addEventListener('playing', () => this.onPlaying());
         this.audio.addEventListener('pause', () => this.onPause());
         this.audio.addEventListener('ended', () => this.onEnded());
         this.audio.addEventListener('waiting', () => this.onWaiting());
@@ -159,11 +190,26 @@ class GlobalAudioPlayer {
     }
     
     play() {
+        // 【关键修复】在调用play之前，保存期望的播放位置
+        const expectedTime = this.audio.currentTime || this.currentState.currentTime || this._pendingSeekTime || 0;
+        this._log(`play(): 期望位置=${expectedTime.toFixed(1)}s`);
+        
+        // 设置期望位置，供 playing 事件使用
+        this._expectedPlayTime = expectedTime;
+        
         return this.audio.play().then(() => {
             this.currentState.isPlaying = true;
             this.updatePlayPauseButton();
             this.playerLoading.classList.remove('active');
             this.saveState();
+            
+            // 【关键修复】播放成功后，检查位置是否被重置
+            setTimeout(() => {
+                if (expectedTime > 2 && this.audio.currentTime < 2) {
+                    this._log(`play()后位置被重置，恢复到: ${expectedTime.toFixed(1)}s`);
+                    this.audio.currentTime = expectedTime;
+                }
+            }, 100);
         }).catch(err => {
             console.error('播放失败:', err);
             this.playerLoading.classList.remove('active');
@@ -282,9 +328,18 @@ class GlobalAudioPlayer {
     
     onLoadedMetadata() {
         this.updateTime();
-        // 恢复播放位置
-        if (this.currentState.currentTime > 0) {
-            this.audio.currentTime = this.currentState.currentTime;
+        
+        // 【关键修复】恢复播放位置
+        // 优先使用 _pendingSeekTime（页面加载时设置的待恢复位置）
+        const pendingTime = this._pendingSeekTime || 0;
+        const savedTime = this.currentState.currentTime || 0;
+        const targetTime = pendingTime > 0 ? pendingTime : savedTime;
+        
+        if (targetTime > 0 && this.audio.currentTime === 0) {
+            this._log(`metadata恢复: ${targetTime.toFixed(1)}s`);
+            this.audio.currentTime = targetTime;
+            // 清除待恢复标记
+            this._pendingSeekTime = 0;
         }
     }
     
@@ -292,6 +347,21 @@ class GlobalAudioPlayer {
         this.currentState.isPlaying = true;
         this.updatePlayPauseButton();
         this.updateMediaSession();
+    }
+    
+    // 【关键修复】音频真正开始播放时触发
+    onPlaying() {
+        const expectedTime = this._expectedPlayTime || 0;
+        const currentTime = this.audio.currentTime || 0;
+        
+        // 如果期望位置超过2秒，但当前位置小于2秒，说明位置被重置了
+        if (expectedTime > 2 && currentTime < 2) {
+            this._log(`playing事件检测到位置重置: ${currentTime.toFixed(1)}s → ${expectedTime.toFixed(1)}s`);
+            this.audio.currentTime = expectedTime;
+        }
+        
+        // 清除期望位置标记
+        this._expectedPlayTime = 0;
     }
     
     onPause() {
@@ -310,7 +380,16 @@ class GlobalAudioPlayer {
     
     onCanPlay() {
         this.playerLoading.classList.remove('active');
-        console.log('音频可以播放，缓冲完成');
+        
+        // 【双重保障】如果还有待恢复的位置，在这里恢复
+        const pendingTime = this._pendingSeekTime || 0;
+        if (pendingTime > 0 && this.audio.currentTime < pendingTime - 2) {
+            this._log(`canPlay恢复: ${pendingTime.toFixed(1)}s`);
+            this.audio.currentTime = pendingTime;
+            this._pendingSeekTime = 0;
+        }
+        
+        this._log('音频就绪');
     }
     
     onError(e) {
@@ -350,7 +429,22 @@ class GlobalAudioPlayer {
     
     // 状态持久化
     saveState() {
+        // 确保 currentTime 是最新的
+        if (this.audio && !isNaN(this.audio.currentTime) && this.audio.currentTime > 0) {
+            this.currentState.currentTime = this.audio.currentTime;
+        }
         localStorage.setItem('globalPlayerState', JSON.stringify(this.currentState));
+    }
+    
+    // 同步保存状态（用于页面卸载时，确保数据写入）
+    saveStateSync() {
+        // 确保 currentTime 是最新的
+        if (this.audio && !isNaN(this.audio.currentTime) && this.audio.currentTime > 0) {
+            this.currentState.currentTime = this.audio.currentTime;
+        }
+        const stateJson = JSON.stringify(this.currentState);
+        localStorage.setItem('globalPlayerState', stateJson);
+        this._log(`保存状态: time=${this.currentState.currentTime?.toFixed(1)}s`);
     }
     
     loadState() {
@@ -358,9 +452,14 @@ class GlobalAudioPlayer {
         if (saved) {
             try {
                 this.currentState = JSON.parse(saved);
+                this._log(`加载状态: chId=${this.currentState.chapterId}, time=${this.currentState.currentTime?.toFixed(1)}s`);
                 
                 // 恢复音频源
                 if (this.currentState.chapterId) {
+                    // 标记需要恢复的播放位置
+                    this._pendingSeekTime = this.currentState.currentTime || 0;
+                    this._log(`设置待恢复位置: ${this._pendingSeekTime.toFixed(1)}s`);
+                    
                     this.audio.src = `/stream/${this.currentState.chapterId}`;
                 }
             } catch (e) {
@@ -382,12 +481,219 @@ class GlobalAudioPlayer {
         };
         localStorage.removeItem('globalPlayerState');
     }
+    
+    // 监听页面可见性变化（iOS Safari 切换页面/应用的关键）
+    handleVisibilityChange() {
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                // 页面被隐藏（切换到其他页面/应用）
+                console.log('[iOS优化] 页面被隐藏，保存当前状态（音频继续播放）');
+                this.saveState();
+                // 注意：不主动暂停音频，让其继续在后台播放
+            } else {
+                // 页面变为可见（从其他页面/应用切换回来）
+                console.log('[iOS优化] 页面恢复可见，检查播放状态');
+                this.handlePageRestored();
+            }
+        });
+        
+        // iOS Safari 特定事件
+        window.addEventListener('pageshow', (event) => {
+            if (event.persisted) {
+                // 从 bfcache 恢复
+                console.log('[iOS优化] 从 bfcache 恢复，检查播放状态');
+                this.handlePageRestored();
+            }
+        });
+        
+        // 【关键修复】监听页面卸载事件，确保站内跳转时保存播放状态
+        window.addEventListener('beforeunload', () => {
+            console.log('[站内跳转] beforeunload 触发，保存播放状态');
+            this.saveStateSync();
+        });
+        
+        window.addEventListener('pagehide', () => {
+            console.log('[站内跳转] pagehide 触发，保存播放状态');
+            this.saveStateSync();
+        });
+    }
+    
+    // 页面恢复时的处理逻辑
+    handlePageRestored() {
+        // 重新加载状态
+        this.loadState();
+        
+        // 如果有正在播放的章节
+        if (this.currentState.chapterId) {
+            const hadAudioSrc = this.audio.src && this.audio.src.includes(`/stream/${this.currentState.chapterId}`);
+            const savedTime = this.currentState.currentTime || 0;
+            const wasPlaying = this.currentState.isPlaying;
+            
+            console.log(`[iOS优化] 页面恢复，章节ID=${this.currentState.chapterId}, 保存位置=${savedTime}秒, 之前播放状态=${wasPlaying}`);
+            
+            // 检查 audio.src 是否被清空（iOS Safari 某些情况下会清空）
+            if (!hadAudioSrc) {
+                console.log('[iOS优化] 音频源被清空，重新设置');
+                this.audio.src = `/stream/${this.currentState.chapterId}`;
+                
+                // 等待 loadedmetadata 事件后，恢复播放位置
+                const restorePlayback = () => {
+                    if (savedTime > 0) {
+                        console.log(`[iOS优化] loadedmetadata触发，恢复播放位置到: ${savedTime}秒`);
+                        this.audio.currentTime = savedTime;
+                    }
+                    
+                    // 如果之前在播放，自动恢复播放
+                    if (wasPlaying) {
+                        console.log('[iOS优化] 尝试自动恢复播放');
+                        this.play().catch(err => {
+                            console.log('[iOS优化] 自动恢复播放失败，需要用户手动点击:', err);
+                            // 标记为暂停状态
+                            this.currentState.isPlaying = false;
+                            this.updatePlayPauseButton();
+                        });
+                    }
+                };
+                this.audio.addEventListener('loadedmetadata', restorePlayback, { once: true });
+            } else {
+                // audio.src 还在，检查播放位置和状态
+                console.log(`[iOS优化] 音频源存在，当前audio.currentTime=${this.audio.currentTime}秒, audio.paused=${this.audio.paused}`);
+                
+                // 关键修复：iOS Safari页面切换后，audio.currentTime可能被重置为0
+                // 如果检测到位置被重置（当前为0但保存的不是0），立即恢复
+                if (savedTime > 0 && this.audio.currentTime === 0) {
+                    console.log(`[iOS优化] 检测到播放位置被重置，立即恢复到: ${savedTime}秒`);
+                    this.audio.currentTime = savedTime;
+                } else if (savedTime > 0 && Math.abs(this.audio.currentTime - savedTime) > 2) {
+                    console.log(`[iOS优化] 播放位置偏差较大(${this.audio.currentTime}秒 vs ${savedTime}秒)，校正`);
+                    this.audio.currentTime = savedTime;
+                }
+                
+                // 处理播放状态
+                if (this.audio.paused) {
+                    console.log('[iOS优化] 音频当前已暂停');
+                    
+                    // 关键修复：确保播放位置正确
+                    if (savedTime > 0 && this.audio.currentTime !== savedTime) {
+                        console.log(`[站内切换修复] 音频暂停时恢复位置: ${this.audio.currentTime}秒 → ${savedTime}秒`);
+                        this.audio.currentTime = savedTime;
+                    }
+                    
+                    // 更新UI为暂停状态
+                    this.currentState.isPlaying = false;
+                    this.updatePlayPauseButton();
+                    
+                    // 如果之前在播放，尝试恢复（但不自动播放，等待用户点击）
+                    if (wasPlaying) {
+                        console.log('[iOS优化] 之前在播放，但现在已暂停，等待用户手动点击播放按钮');
+                        // 不自动调用play()，让用户手动点击，避免autoplay policy阻止
+                    }
+                } else {
+                    // 音频正在播放，确保状态同步
+                    console.log('[iOS优化] 音频正在播放，同步状态');
+                    this.currentState.isPlaying = true;
+                    this.updatePlayPauseButton();
+                }
+            }
+        }
+    }
+    
+    // 【调试面板】初始化
+    _initDebugPanel() {
+        // 创建调试面板
+        const panel = document.createElement('div');
+        panel.id = 'audioDebugPanel';
+        panel.innerHTML = `
+            <div style="
+                position: fixed;
+                top: 10px;
+                left: 10px;
+                right: 10px;
+                background: rgba(0,0,0,0.85);
+                color: #0f0;
+                font-size: 11px;
+                font-family: monospace;
+                padding: 10px;
+                border-radius: 8px;
+                z-index: 99999;
+                max-height: 200px;
+                overflow-y: auto;
+                display: none;
+            ">
+                <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                    <b>🔧 播放器调试</b>
+                    <span id="debugClose" style="cursor:pointer;">✕</span>
+                </div>
+                <div id="debugStatus" style="margin-bottom:5px;"></div>
+                <div id="debugLog" style="max-height:120px;overflow-y:auto;"></div>
+            </div>
+        `;
+        document.body.appendChild(panel);
+        
+        this._debugPanel = panel.firstElementChild;
+        this._debugStatus = document.getElementById('debugStatus');
+        this._debugLogEl = document.getElementById('debugLog');
+        
+        // 关闭按钮
+        document.getElementById('debugClose').addEventListener('click', () => {
+            this._debugPanel.style.display = 'none';
+        });
+    }
+    
+    // 【调试面板】打开调试面板（供外部调用）
+    showDebugPanel() {
+        if (this._debugPanel) {
+            this._debugPanel.style.display = 'block';
+            this._updateDebugStatus();
+        }
+    }
+    
+    // 【调试面板】更新状态显示
+    _updateDebugStatus() {
+        if (!this._debugStatus) return;
+        const audioTime = this.audio ? this.audio.currentTime : 0;
+        const savedTime = this.currentState.currentTime || 0;
+        const pendingTime = this._pendingSeekTime || 0;
+        const readyState = this.audio ? this.audio.readyState : -1;
+        
+        this._debugStatus.innerHTML = `
+            <div>📍 audio.currentTime: <b>${audioTime.toFixed(1)}秒</b></div>
+            <div>💾 savedTime: <b>${savedTime.toFixed(1)}秒</b></div>
+            <div>⏳ pendingSeekTime: <b>${pendingTime.toFixed(1)}秒</b></div>
+            <div>🎵 readyState: ${readyState} | paused: ${this.audio?.paused}</div>
+            <div>📖 chapterId: ${this.currentState.chapterId}</div>
+        `;
+    }
+    
+    // 【调试面板】添加日志
+    _log(msg) {
+        console.log('[Player] ' + msg);
+        if (!this._debugLogEl) return;
+        try {
+            const time = new Date().toLocaleTimeString();
+            const div = document.createElement('div');
+            div.style.borderBottom = '1px solid #333';
+            div.style.padding = '2px 0';
+            div.textContent = `[${time}] ${msg}`;
+            this._debugLogEl.insertBefore(div, this._debugLogEl.firstChild);
+            // 只保留最近20条
+            while (this._debugLogEl.children.length > 20) {
+                this._debugLogEl.removeChild(this._debugLogEl.lastChild);
+            }
+            this._updateDebugStatus();
+        } catch(e) {}
+    }
 }
 
 // 初始化全局播放器
 window.globalPlayer = new GlobalAudioPlayer();
 
-// 暴露全局方法供页面调用
+// 暂露全局方法供页面调用
 window.playAudiobook = function(novelId, novelTitle, chapterId, chapterTitle, chapters = []) {
     window.globalPlayer.playChapter(novelId, novelTitle, chapterId, chapterTitle, chapters);
 };
+
+// 暗号：URL加 ?debug=1 打开调试面板
+if (window.location.search.includes('debug=1')) {
+    setTimeout(() => window.globalPlayer.showDebugPanel(), 500);
+}

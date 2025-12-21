@@ -10,14 +10,15 @@ NovelVoice is a Flask-based web application that converts Chinese novel text fil
 ### Core Components
 All Python modules are located in the `app/` directory:
 
-1. **Flask App (`app/app.py`)**: Entry point that initializes the Flask application, database, and routes
-2. **Database Models (`app/models.py`)**: SQLAlchemy models for Novel, Chapter, and Character entities
-3. **Routes (`app/routes.py`)**: HTTP endpoint definitions for file upload, playback, and content retrieval
-4. **Chapter Processing (`app/chapter.py`)**: Novel parsing and chapter segmentation logic
-5. **Audio Generation (`app/audio.py`)**: Manages audio synthesis and streaming
-6. **LLM Integration (`app/llm_client.py`)**: Connects to LLM API for voice script generation
-7. **Voice Script Generation (`app/voice_script.py`)**: Converts LLM output to EasyVoice-compatible format
-8. **EasyVoice Client (`app/easyvoice_client.py`)**: Interfaces with local EasyVoice TTS service
+1. **Flask App (`app/app.py`)**: Entry point that initializes the Flask application, database, authentication, and routes
+2. **Database Models (`app/models.py`)**: SQLAlchemy models for User, Novel, Chapter, and Character entities
+3. **Configuration (`app/config.py`)**: Application configuration including session settings and database paths
+4. **File Upload (`app/upload.py`)**: Handles novel file uploads and creates Novel records
+5. **Chapter Processing (`app/chapter.py`)**: Novel parsing and chapter segmentation logic
+6. **Audio Generation (`app/audio.py`)**: Manages audio synthesis and streaming
+7. **LLM Integration (`app/llm_client.py`)**: Connects to LLM API for voice script generation
+8. **Voice Script Generation (`app/voice_script.py`)**: Converts LLM output to EasyVoice-compatible format
+9. **EasyVoice Client (`app/easyvoice_client.py`)**: Interfaces with local EasyVoice TTS service
 
 ### Data Flow
 1. User uploads a `.txt` novel file → `app/upload.py` saves it and creates Novel record
@@ -29,8 +30,9 @@ All Python modules are located in the `app/` directory:
 7. Generated MP3 is cached and streamed to the user
 
 ### Database Schema
-- **Novel**: Stores uploaded novel metadata (title, author, file_path, upload_date)
-- **Chapter**: Contains chapter metadata (title, start_position in file, audio_file_path, novel_id FK)
+- **User**: User authentication (username, password_hash, is_superuser)
+- **Novel**: Stores uploaded novel metadata (title, author, file_path, upload_date, user_id FK)
+- **Chapter**: Contains chapter metadata (title, start_position in file, audio_file_path, audio_status, novel_id FK)
 - **Character**: Caches character info extracted by LLM (name, gender, personality, voice mapping)
 
 ### Voice Configuration
@@ -46,7 +48,17 @@ All Python modules are located in the `app/` directory:
 source ./venv/bin/activate
 python3 app/app.py
 ```
-Application runs at http://localhost:5000 in debug mode.
+Application runs at http://localhost:5002 in debug mode.
+
+For quick testing with environment variables set:
+```bash
+./test.sh
+```
+
+For deployment using Docker:
+```bash
+./deploy.sh
+```
 
 ### Environment Variables
 Required environment variables (see `test.sh` for example):
@@ -54,6 +66,7 @@ Required environment variables (see `test.sh` for example):
 - `LLM_BASE_URL`: Base URL for LLM API endpoint
 - `LLM_MODEL`: Model identifier (e.g., "qwen3-max")
 - `EASYVOICE_BASE_URL`: URL of local EasyVoice TTS service
+- `SECRET_KEY`: Flask secret key for session management
 
 ### Database Initialization
 Database is automatically created on first run via `db.create_all()` in `app/app.py`.
@@ -67,6 +80,13 @@ pip install -r requirements.txt
 Core dependencies: Flask 2.3.3, Flask-SQLAlchemy 3.0.5, requests 2.31.0
 
 ## Key Implementation Details
+
+### Authentication System
+- Session-based authentication using Flask sessions
+- User model with username/password_hash and is_superuser flag
+- `@login_required` decorator protects routes, returns 401 for API requests or redirects to login for page requests
+- Superuser-only admin panel at `/admin/users` for user management
+- Create initial superuser with `create_superuser.py` script
 
 ### Chapter Detection Algorithm
 The system uses multi-pattern regex matching in `split_novel_into_chapters()`:
@@ -89,6 +109,12 @@ Long chapters are split into ~1500 character segments at paragraph boundaries (`
 
 ### Content Reading Optimization
 `_read_chapter_content()` uses file seeking to read only the required chapter range, avoiding loading entire novels into memory.
+
+### Async Audio Generation
+- Audio generation runs in background threads to avoid blocking HTTP requests
+- `/preprocess-chapter-script` endpoint starts background processing
+- `/chapter-script-status` endpoint polls for completion status
+- `/cancel-generation` endpoint allows cancellation of background tasks
 
 ## Important Notes
 - All text files must be UTF-8 encoded Chinese novels

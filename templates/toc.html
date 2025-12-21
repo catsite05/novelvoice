@@ -38,16 +38,18 @@
         
         .nav-links {
             display: flex;
-            gap: 15px;
+            gap: 10px;
             flex-wrap: wrap;
+            align-items: center;
         }
         
         .nav-links a {
             color: #667eea;
             text-decoration: none;
-            padding: 8px 15px;
+            padding: 8px 16px;
             border-radius: 20px;
             transition: all 0.3s ease;
+            white-space: nowrap;
         }
         
         .nav-links a:hover {
@@ -142,7 +144,6 @@
             <a href="/novels/list" class="back-link">&larr; 小说列表</a>
             <div class="nav-links">
                 <a href="/">🏠 首页</a>
-                <a href="/player">🎵 有声书</a>
             </div>
             <span id="novelTitle"></span>
         </div>

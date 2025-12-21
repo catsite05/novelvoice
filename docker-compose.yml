@@ -1,0 +1,36 @@
+services:
+  novelvoice:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: novelvoice-app
+    ports:
+      - "5002:5002"
+    environment:
+      # Flask configuration
+      - SECRET_KEY=${SECRET_KEY:-novelvoice-secret-key-change-in-production}
+      
+      # LLM API configuration
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_BASE_URL=${LLM_BASE_URL}
+      - LLM_MODEL=${LLM_MODEL:-qwen3-max}
+      
+      # EasyVoice configuration
+      - EASYVOICE_BASE_URL=${EASYVOICE_BASE_URL:-http://easyvoice:3000}
+    
+    volumes:
+      # Persist database
+      - /volume2/docker/novelvoice/instance:/app/instance
+      # Persist uploaded novels
+      - /volume2/docker/novelvoice/uploads:/app/uploads
+      # Persist generated audio files
+      - /volume2/docker/novelvoice/audio:/app/audio
+    
+    restart: unless-stopped
+    
+    networks:
+      - novelvoice-network
+
+networks:
+  novelvoice-network:
+    driver: bridge

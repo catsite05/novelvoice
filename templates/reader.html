@@ -12,19 +12,21 @@
         
         body {
             font-family: "Microsoft YaHei", Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #f9f6f0; /* 整个页面使用阅读背景色 */
             min-height: 100vh;
-            padding: 20px;
+            padding: 0;
         }
         
         .container {
-            background: #f9f6f0;
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            padding: 30px;
-            max-width: 800px;
-            margin: 0 auto;
+            background: transparent; /* 透明，继承body的背景色 */
+            border-radius: 0;
+            box-shadow: none;
+            padding: 20px;
+            max-width: 100%;
+            margin: 0;
+            min-height: 100vh;
         }
+
         
         .header {
             display: flex;
@@ -33,20 +35,29 @@
             margin-bottom: 20px;
             padding-bottom: 15px;
             border-bottom: 1px solid #ddd;
+            flex-wrap: wrap;
+        }
+        
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
         }
         
         .nav-links {
             display: flex;
-            gap: 15px;
+            gap: 10px;
             flex-wrap: wrap;
+            align-items: center;
         }
         
         .nav-links a {
             color: #667eea;
             text-decoration: none;
-            padding: 8px 15px;
+            padding: 8px 16px;
             border-radius: 20px;
             transition: all 0.3s ease;
+            white-space: nowrap;
         }
         
         .nav-links a.disabled {
@@ -123,8 +134,10 @@
             color: #444;
             white-space: pre-wrap;
             text-align: justify;
-            line-height: 1.5;
+            line-height: 1.8;
             margin-bottom: 30px;
+            transition: font-size 0.3s ease;
+            /* cursor: pointer; */ /* 添加手型指针，提示可点击 */
         }
         
         .chapter-content p {
@@ -139,26 +152,99 @@
             font-size: 1.1em;
         }
         
+        /* 字体大小控制按钮 */
+        .font-size-control {
+            position: fixed;
+            right: 20px;
+            bottom: 100px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 1000;
+            opacity: 1;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            transform: translateX(0);
+        }
+        
+        /* 隐藏状态 */
+        .font-size-control.hidden {
+            opacity: 0;
+            transform: translateX(100px);
+            pointer-events: none;
+        }
+        
+        .font-size-btn {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .font-size-btn:active {
+            transform: scale(0.95);
+        }
+        
         @media (max-width: 600px) {
             .container {
-                padding: 20px;
+                padding: 15px;
             }
             
             .header {
+                flex-direction: row;
+                justify-content: space-between;
+                gap: 10px;
+            }
+            
+            .header-left {
                 flex-direction: column;
-                gap: 15px;
+                align-items: flex-start;
+                gap: 8px;
+            }
+            
+            .nav-links {
+                flex-direction: row;
+                gap: 8px;
+            }
+            
+            #novelTitle {
+                width: 100%;
+                text-align: center;
+                order: -1;
             }
             
             .chapter-title {
-                font-size: 24px;
+                font-size: 22px;
             }
             
             .chapter-content {
-                font-size: 16px;
+                font-size: 17px;
+                line-height: 1.8;
             }
             
             .nav-button {
-                padding: 10px 20px;
+                padding: 10px 15px;
+                font-size: 14px;
+            }
+            
+            .font-size-control {
+                right: 10px;
+                bottom: 90px;
+            }
+            
+            .font-size-btn {
+                width: 40px;
+                height: 40px;
+                font-size: 18px;
             }
         }
     </style>
@@ -167,12 +253,13 @@
 {% block content %}
     <div class="container">
         <div class="header">
-            <a href="/novels/list" class="back-link">&larr; 小说列表</a>
+            <div class="header-left">
+                <a href="/novels/list" class="back-link">&larr; 小说列表</a>
+            </div>
             <div class="nav-links">
                 <a href="/">🏠 首页</a>
                 <a href="#" id="audiobookLink">🎵 有声书</a>
             </div>
-            <span id="novelTitle"></span>
         </div>
     
     <div class="chapter-title" id="chapterTitle">加载中...</div>
@@ -185,6 +272,13 @@
         <a href="#" id="prevChapter" class="nav-button disabled">上一章</a>
         <a href="#" id="tocLink" class="nav-button">目录</a>
         <a href="#" id="nextChapter" class="nav-button">下一章</a>
+    </div>
+    
+    <!-- 字体大小控制 -->
+    <div class="font-size-control">
+        <button class="font-size-btn" id="fontIncrease" title="增大字体">A+</button>
+        <button class="font-size-btn" id="fontDecrease" title="减小字体">A-</button>
+        <button class="font-size-btn" id="fontScrollBottom" title="滚动到底部">↓</button>
     </div>
 {% endblock %}
 
@@ -254,6 +348,9 @@
                     if (data.content) {
                         document.getElementById('chapterTitle').textContent = data.title;
                         document.getElementById('chapterContent').innerHTML = `<p>${data.content.replace(/\n/g, '</p><p>')}</p>`;
+                        
+                        // 更新阅读进度
+                        updateReadingProgress(novelId, chapterId);
                     } else {
                         document.getElementById('chapterContent').innerHTML = '<p>无法加载章节内容。</p>';
                     }
@@ -403,6 +500,90 @@
                 // 仅显示播放器，不重新加载
                 window.globalPlayer.show();
             }
+            
+            // 初始化字体大小控制
+            initFontSizeControl();
+            
+            // 初始化点击切换悬浮按钮
+            initToggleButtons();
         });
+        
+        // 字体大小控制功能
+        function initFontSizeControl() {
+            const chapterContent = document.getElementById('chapterContent');
+            const fontIncreaseBtn = document.getElementById('fontIncrease');
+            const fontDecreaseBtn = document.getElementById('fontDecrease');
+            const fontScrollBottomBtn = document.getElementById('fontScrollBottom');
+            
+            // 从 localStorage 读取保存的字体大小
+            let fontSize = parseInt(localStorage.getItem('readerFontSize')) || 17;
+            chapterContent.style.fontSize = fontSize + 'px';
+            
+            // 增大字体
+            fontIncreaseBtn.addEventListener('click', function() {
+                if (fontSize < 28) {
+                    fontSize += 1;
+                    chapterContent.style.fontSize = fontSize + 'px';
+                    localStorage.setItem('readerFontSize', fontSize);
+                }
+            });
+            
+            // 减小字体
+            fontDecreaseBtn.addEventListener('click', function() {
+                if (fontSize > 12) {
+                    fontSize -= 1;
+                    chapterContent.style.fontSize = fontSize + 'px';
+                    localStorage.setItem('readerFontSize', fontSize);
+                }
+            });
+
+            fontScrollBottomBtn.addEventListener('click', function() {
+                window.scrollTo({
+                    top: document.body.scrollHeight,
+                    behavior: 'smooth'
+                });
+            });
+        }
+        
+        // 更新阅读进度
+        function updateReadingProgress(novelId, chapterId) {
+            fetch('/update-reading-progress', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    novel_id: novelId,
+                    chapter_id: chapterId
+                })
+            }).catch(error => {
+                console.error('Error updating reading progress:', error);
+            });
+        }
+        
+        // 点击章节内容切换悬浮按钮显示/隐藏
+        function initToggleButtons() {
+            const chapterContent = document.getElementById('chapterContent');
+            const fontSizeControl = document.querySelector('.font-size-control');
+            let isButtonsVisible = true;
+            
+            // 点击章节内容切换按钮显示状态
+            chapterContent.addEventListener('click', function(e) {
+                // 防止点击链接等元素时触发
+                if (e.target.tagName === 'A' || e.target.closest('a')) {
+                    return;
+                }
+                
+                if (isButtonsVisible) {
+                    // 隐藏按钮
+                    fontSizeControl.classList.add('hidden');
+                    isButtonsVisible = false;
+                } else {
+                    // 显示按钮
+                    fontSizeControl.classList.remove('hidden');
+                    isButtonsVisible = true;
+                }
+            });
+        }
     </script>
 {% endblock %}

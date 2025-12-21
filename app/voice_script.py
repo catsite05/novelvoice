@@ -98,7 +98,21 @@ def convert_voice_script(voice_script):
                 # 提取rate的数值部分
                 rate_value = segment['rate'].rstrip('%')
                 if rate_value and rate_value not in ['0', '+0', '-0']:
-                    converted_segment['rate'] = segment['rate']
+                    # 检查是否为旁白且rate小于最小值
+                    if segment['charactor'] == '旁白':
+                        # 获取旁白的最小rate值
+                        min_rate_value = voice_config.get('旁白-min-rate', '0%').rstrip('%')
+                        # 安全地转换为浮点数进行比较
+                        try:
+                            if int(rate_value) < int(min_rate_value):
+                                converted_segment['rate'] = voice_config['旁白-min-rate']
+                            else:
+                                converted_segment['rate'] = segment['rate']
+                        except ValueError:
+                            # 如果转换失败，使用原始值
+                            converted_segment['rate'] = segment['rate']
+                    else:
+                        converted_segment['rate'] = segment['rate']
             
             if 'pitch' in segment:
                 # 提取pitch的数值部分

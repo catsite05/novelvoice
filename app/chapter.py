@@ -1,11 +1,19 @@
 import re
 import os
+from flask import g, abort
 from models import Novel, Chapter, db
 
 
 def delete_novel(novel_id):
     # 获取小说对象
     novel = Novel.query.get_or_404(novel_id)
+
+    # 权限校验：普通用户只能删除自己的小说
+    user = getattr(g, 'current_user', None)
+    if user is None:
+        abort(401)
+    if not user.is_superuser and novel.user_id != user.id:
+        abort(403)
     
     # 获取项目根目录
     root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -69,23 +77,20 @@ def split_novel_into_chapters(file_path, novel_id):
     for i, line in enumerate(lines):
         line = line.strip()
         # Check if this line looks like a chapter title
-        if (line.startswith('第') and ('章' in line or '节' in line)) or line.startswith('序章') or line.startswith('序言') or (line.startswith('序') and len(line) < 50):
-            # Make sure it's not just a reference to a chapter title in the text
-            # Chapter titles should be standalone lines or near the beginning of sections
-            if i == 0 or (i > 0 and len(lines[i-1].strip()) == 0 and (i < 2 or len(lines[i-2].strip()) == 0)):
-                # Calculate the actual position in the original text
-                # We need to calculate the position correctly by counting characters and newlines
-                position = 0
-                for j in range(i):
-                    position += len(lines[j]) + 1  # +1 for newline character
-                chapter_positions.append(position)
-                chapter_titles.append(line)
+        if (line.startswith('第') and ('章' in line or '节' in line or '卷' in line or '回' in line)) or line.startswith('序章') or line.startswith('序言') or (line.startswith('序') and len(line) < 50):
+            # Calculate the actual position in the original text
+            # We need to calculate the position correctly by counting characters and newlines
+            position = 0
+            for j in range(i):
+                position += len(lines[j]) + 1  # +1 for newline character
+            chapter_positions.append(position)
+            chapter_titles.append(line)
     
     # Handle the case where the first chapter starts at the beginning of the file
     if not chapter_positions or chapter_positions[0] > 100:
         # Check if the file starts with what looks like a chapter
         first_lines = novel_content[:100].split('\n')
-        if first_lines and (('章' in first_lines[0] and first_lines[0].startswith('第')) or first_lines[0].startswith('序')):
+        if first_lines and ((('章' in first_lines[0] or '卷' in first_lines[0] or '回' in first_lines[0] or '节' in first_lines[0]) and first_lines[0].startswith('第')) or first_lines[0].startswith('序')):
             chapter_positions.insert(0, 0)
             chapter_titles.insert(0, first_lines[0].strip())
     
@@ -150,20 +155,51 @@ def split_novel_into_chapters(file_path, novel_id):
     return len(chapters)
 
 def list_chapters(novel_id=None):
+    user = getattr(g, 'current_user', None)
+    if user is None:
+        abort(401)
+
+    query = Chapter.query
     if novel_id:
-        chapters = Chapter.query.filter_by(novel_id=novel_id).all()
-    else:
-        chapters = Chapter.query.all()
+        query = query.filter_by(novel_id=novel_id)
+
+    # 普通用户只能看到自己小说下的章节
+    if not user.is_superuser:
+        query = query.join(Novel).filter(Novel.user_id == user.id)
+
+    chapters = query.all()
     return {"chapters": [{"id": c.id, "title": c.title} for c in chapters]}
 
 def list_novels():
-    novels = Novel.query.all()
-    return {"novels": [{"id": n.id, "title": n.title, "author": n.author, "upload_date": n.upload_date.isoformat() if n.upload_date else None} for n in novels]}
+    user = getattr(g, 'current_user', None)
+    if user is None:
+        abort(401)
+
+    if user.is_superuser:
+        novels = Novel.query.all()
+    else:
+        novels = Novel.query.filter_by(user_id=user.id).all()
+
+    return {"novels": [
+        {
+            "id": n.id,
+            "title": n.title,
+            "author": n.author,
+            "upload_date": n.upload_date.isoformat() if n.upload_date else None,
+            "last_read_chapter_id": n.last_read_chapter_id
+        } for n in novels
+    ]}
 
 def get_chapter_content(novel_id, chapter_id):
     # Get the novel and chapter information
     novel = Novel.query.get_or_404(novel_id)
     chapter = Chapter.query.filter_by(id=chapter_id, novel_id=novel_id).first_or_404()
+
+    # 权限校验：仅在有登录用户时检查（HTTP 请求由 @login_required 保证已登录）
+    user = getattr(g, 'current_user', None)
+    if user is not None:
+        if not user.is_superuser and novel.user_id != user.id:
+            abort(403)
     
     # Get all chapters for this novel ordered by position
     all_chapters = Chapter.query.filter_by(novel_id=novel_id).order_by(Chapter.start_position).all()

@@ -16,5 +16,6 @@
     }
   },
   "旁白": "zh-CN-YunjianNeural",
-  "default-rate": "10%"
+  "default-rate": "10%",
+  "旁白-min-rate": "0%"
 }

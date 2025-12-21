@@ -14,9 +14,6 @@
             font-family: 'Microsoft YaHei', Arial, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
             padding: 20px;
         }
         
@@ -25,17 +22,13 @@
             backdrop-filter: blur(10px);
             border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            padding: 40px;
-            width: 100%;
-            max-width: 500px;
+            padding: 30px;
+            max-width: 800px;
+            margin: 0 auto;
             text-align: center;
-            transition: transform 0.3s ease;
         }
         
-        .container:hover {
-            transform: translateY(-5px);
-        }
-        
+
         .logo {
             font-size: 3em;
             margin-bottom: 20px;
@@ -133,16 +126,23 @@
             margin-top: 30px;
             padding-top: 20px;
             border-top: 1px solid #eee;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
         }
         
         .nav-links a {
-            display: inline-block;
+            display: block;
             color: #667eea;
             text-decoration: none;
-            margin: 0 15px;
-            padding: 10px 20px;
+            padding: 12px 20px;
             border-radius: 25px;
             transition: all 0.3s ease;
+            white-space: nowrap;
+            width: 80%;
+            text-align: center;
+            background: rgba(102, 126, 234, 0.05);
         }
         
         .nav-links a:hover {
@@ -210,7 +210,7 @@
             }
         }
         
-        @media (max-width: 600px) {
+        @media (max-width: 768px) {
             .container {
                 padding: 20px;
             }
@@ -220,12 +220,17 @@
             }
             
             .features {
-                flex-direction: column;
+                flex-direction: row;
+                justify-content: space-around;
+            }
+            
+            .feature {
+                min-width: 80px;
+                padding: 10px;
             }
             
             .nav-links a {
-                display: block;
-                margin: 10px 0;
+                width: 100%;
             }
         }
     </style>
@@ -233,7 +238,7 @@
 
 {% block content %}
     <div class="container">
-        <div class="logo">📚🎧</div>
+        <div class="logo">🎧</div>
         <h1>NovelVoice</h1>
         <p class="subtitle">将您的小说转换为有声书</p>
         
@@ -267,6 +272,10 @@
         
         <div class="nav-links">
             <a href="/novels/list">📚 我的小说</a>
+            {% if current_user and current_user.is_superuser %}
+            <a href="/admin/users">👥 用户管理</a>
+            {% endif %}
+            <a href="/logout">🚪 退出登录</a>
         </div>
     </div>
 {% endblock %}

@@ -42,16 +42,18 @@
         
         .nav-links {
             display: flex;
-            gap: 15px;
+            gap: 10px;
             flex-wrap: wrap;
+            align-items: center;
         }
         
         .nav-links a {
             color: #667eea;
             text-decoration: none;
-            padding: 8px 15px;
+            padding: 8px 16px;
             border-radius: 20px;
             transition: all 0.3s ease;
+            white-space: nowrap;
         }
         
         .nav-links a:hover {
@@ -226,9 +228,25 @@
                             <div class="novel-date">上传时间: ${novel.upload_date ? new Date(novel.upload_date).toLocaleString() : '未知'}</div>
                             <button class="delete-btn" onclick="deleteNovel(event, ${novel.id}, '${novel.title}')">×</button>
                         `;
-                        // 点击小说卡片跳转到章节列表
+                        // 点击小说卡片跳转到最后阅读的章节
                         novelDiv.addEventListener('click', function() {
-                            window.location.href = '/toc?novel_id=' + novel.id;
+                            // 获取阅读进度
+                            fetch(`/get-reading-progress/${novel.id}`)
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.chapter_id) {
+                                        // 跳转到阅读页面
+                                        window.location.href = `/reader?novel_id=${novel.id}&chapter_id=${data.chapter_id}`;
+                                    } else {
+                                        // 如果没有章节，跳转到目录页
+                                        window.location.href = '/toc?novel_id=' + novel.id;
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('Error getting reading progress:', error);
+                                    // 错误时回退到目录页
+                                    window.location.href = '/toc?novel_id=' + novel.id;
+                                });
                         });
                         novelList.appendChild(novelDiv);
                     });

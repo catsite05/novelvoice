@@ -50,12 +50,24 @@ def convert_voice_script(voice_script):
             
             # 如果数据库中没有该角色，则添加到数据库
             if not existing_character:
+                # 获取角色的性别和个性
+                gender = char.get('gender', 'Male')
+                personality = char.get('personalities', '')
+                
+                # 从voice.json中获取对应的语音
+                voice = None
+                if gender in voice_config['voices'] and personality in voice_config['voices'][gender]:
+                    voice = voice_config['voices'][gender][personality]
+                else:
+                    # 如果找不到匹配的语音，使用默认旁白语音
+                    voice = voice_config.get('旁白', 'zh-CN-YunjianNeural')
+                    print(f"警告: 角色 {char['name']} 的性别 {gender} 或个性 {personality} 在voice.json中未找到，使用默认旁白语音")
+                
                 new_character = Character(
                     name=char['name'],
-                    gender=char['gender'],
-                    personality=char['personalities'],
-                    # 根据性别和个性从voice.json中获取语音
-                    voice=voice_config['voices'][char['gender']][char['personalities']]
+                    gender=gender,
+                    personality=personality,
+                    voice=voice
                 )                
                 db.session.add(new_character)
         

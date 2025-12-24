@@ -12,6 +12,7 @@ from flask import g, abort
 from chapter import _read_chapter_content
 from voice_script import generate_voice_script
 from easyvoice_client import EasyVoiceClient
+from edgetts_client import EdgeTTSClient
 
 
 def preprocess_chapter_script(chapter_id):
@@ -326,6 +327,26 @@ def stream_chapter(app, chapter_id):
     真正的流式播放：边生成边传输，支持页面切换后继续生成
     三线程架构：脚本生成 + 音频生成 + 文件写入（独立）
     """
+    
+    print(f"启动播放章节: {chapter_id}")
+
+    # 打印请求头部信息
+    print(f"请求头部信息: {request.headers}")
+
+    # 打印Range头部参数
+    range_header = request.headers.get('Range', None)
+    start_pos = 0
+    end_pos = None
+    if range_header:
+        print(f"Range头部参数: {range_header}")
+        # 解析Range头部 (格式如: bytes=0-1023)
+        if range_header.startswith('bytes='):
+            range_value = range_header[6:]  # 移除 'bytes=' 前缀
+            if '-' in range_value:
+                start_str, end_str = range_value.split('-', 1)
+                start_pos = int(start_str) if start_str else 0
+                end_pos = int(end_str) if end_str else None
+
     chapter = Chapter.query.get_or_404(chapter_id)
     novel = Novel.query.get_or_404(chapter.novel_id)
 
@@ -346,9 +367,10 @@ def stream_chapter(app, chapter_id):
         print(f"[缓存] 使用已完成的音频文件: {audio_path}")
         return send_file(audio_path, mimetype='audio/mpeg')
     
-    def stream_existing_file():
+    def stream_existing_file(start_pos=0):
         """流式读取正在增长的文件，支持客户端断开连接时优雅退出"""
-        position = 0
+        
+        position = start_pos
         no_growth_count = 0
         last_size = 0
         client_disconnected = False
@@ -373,11 +395,13 @@ def stream_chapter(app, chapter_id):
                                     no_growth_count = 0
                                 except GeneratorExit:
                                     # 客户端断开连接
+                                    print("[播放] 服务器断开连接 -- 1")
                                     client_disconnected = True
                                     return
                             else:
                                 break
                 except GeneratorExit:
+                    print("[播放] 服务器断开连接 -- 2")
                     client_disconnected = True
                     return
                 except Exception:
@@ -390,7 +414,7 @@ def stream_chapter(app, chapter_id):
                     time.sleep(1)
                     no_growth_count += 1
                     # 文件未增长超时
-                    if no_growth_count > 30:
+                    if no_growth_count > 60:
                         print(f"[播放] 文件长时间未增长,停止读取 (position={position}, size={current_size})")
                         return
                     # 等待新数据
@@ -407,19 +431,37 @@ def stream_chapter(app, chapter_id):
                     
         except GeneratorExit:
             # 客户端断开连接时静默退出（页面切换时的正常行为）
+            print("[播放] 服务器断开连接 -- 3")
             pass
         except Exception as e:
             print(f"[播放] 流式传输发生错误: {e}")
-            
+                          
+    # iPhone的Safari浏览器会先请求前两个字节，在这里做特殊处理：发送状态码是206的响应消息，消息的数据部分是两个字节0xff和0xf3
+    if start_pos == 0 and end_pos == 1:
+        response_data = b"\xff\xf3"
+        return Response(
+                response_data,
+                status=206,
+                mimetype="audio/mpeg",
+                headers={
+                    "Content-Range": f"bytes 0-1/*",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": "2"
+                }
+            )                
 
     # 情况2: 文件正在生成中(后台线程在工作)
     if chapter.audio_status == 'generating' and os.path.exists(audio_path):
         print(f"[播放] 文件正在后台生成,流式返回现有内容: {audio_path}")
-            
-        return Response(stream_existing_file(), mimetype='audio/mpeg', headers={
-            'Cache-Control': 'no-cache',
-            'X-Accel-Buffering': 'no'  # 禁用nginx缓冲
-        })
+                    
+        return Response(
+            stream_existing_file(start_pos), 
+            mimetype='audio/mpeg', 
+            headers={
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no',  # 禁用nginx缓冲
+            }
+        )
     
     # 情况3: 启动新的生成流程
     print(f"\n{'='*60}")
@@ -478,13 +520,6 @@ def stream_chapter(app, chapter_id):
         with app.app_context():
             try:
                 for i, segment in enumerate(segments):
-                    if cancel_event.is_set():
-                        print(f"[脚本生成] 收到取消信号, 停止章节 {chapter_id} 的脚本生成")
-                        error_container['error'] = error_container.get('error') or 'cancelled'
-                        # 通知下游队列,让其他线程尽快退出
-                        script_queue.put(('error', 'cancelled'))
-                        return
-
                     print(f"\n[脚本生成] 正在处理第 {i+1}/{len(segments)} 段（{len(segment)} 字）...")
                     
                     # 检查是否已有保存的脚本
@@ -509,14 +544,21 @@ def stream_chapter(app, chapter_id):
                     script_queue.put((i, voice_script))
                     print(f"[脚本生成] 第 {i+1} 段脚本已入队")
                 
+                    if cancel_event.is_set():
+                        print(f"[脚本生成] 收到取消信号, 停止章节 {chapter_id} 的脚本生成")
+                        error_container['error'] = error_container.get('error') or 'cancelled'
+                        # 通知下游队列,让其他线程尽快退出
+                        script_queue.put(('error', 'cancelled'))
+                        return
+
                 # 脚本生成完成标记
                 script_queue.put(('done', None))
-                script_complete_event.set()
                 print("\n[脚本生成] 所有脚本生成完成\n")
                 
                 # 检查并预处理下一章
                 _check_and_preprocess_next_chapter(chapter_id)
-                
+                script_complete_event.set()
+
             except Exception as e:
                 print(f"\n[脚本生成] 发生错误: {e}")
                 import traceback
@@ -576,18 +618,34 @@ def stream_chapter(app, chapter_id):
                             i, voice_script = item
                             print(f"\n[音频生成] 正在生成第 {i+1} 段音频...")
                                 
-                            # 使用 EasyVoice 流式生成音频
-                            ev_client = EasyVoiceClient()
+                            # 使用 EdgeTTS 流式生成音频（默认）
+                            # 如果需要使用 EasyVoice，设置环境变量 USE_EASYVOICE=1
+                            use_easyvoice = os.getenv('USE_EASYVOICE', '0') == '1'
+                            
+                            if use_easyvoice:
+                                print(f"[音频生成] 使用 EasyVoice 生成第 {i+1} 段")
+                                client = EasyVoiceClient()
+                            else:
+                                print(f"[音频生成] 使用 EdgeTTS 生成第 {i+1} 段")
+                                client = EdgeTTSClient()
                             
                             try:
-                                # 关键：调用流式生成方法
-                                for chunk in ev_client.generate_audio_stream(voice_script):
-                                    # 立即写入文件
-                                    f.write(chunk)
-                                    f.flush()
+                                # 关键：调用流式生成方法，传入cancel_event
+                                if use_easyvoice:
+                                    # EasyVoice不支持cancel_event参数
+                                    for chunk in client.generate_audio_stream(voice_script):
+                                        # 立即写入文件
+                                        f.write(chunk)
+                                        f.flush()
 
-                                    if cancel_event.is_set():
-                                        break
+                                        if cancel_event.is_set():
+                                            break
+                                else:
+                                    # EdgeTTS支持cancel_event参数
+                                    for chunk in client.generate_audio_stream(voice_script, cancel_event):
+                                        # 立即写入文件
+                                        f.write(chunk)
+                                        f.flush()
                                     
                                 print(f"[音频生成] 第 {i+1} 段生成并写入完成")
                                     
@@ -643,7 +701,11 @@ def stream_chapter(app, chapter_id):
     script_thread.start()
     audio_thread.start()
     
-    return Response(stream_existing_file(), mimetype='audio/mpeg', headers={
-            'Cache-Control': 'no-cache',
-            'X-Accel-Buffering': 'no'  # 禁用nginx缓冲
-        })
+    return Response(
+            stream_existing_file(start_pos), 
+            mimetype='audio/mpeg', 
+            headers={
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no',  # 禁用nginx缓冲
+            }
+        )

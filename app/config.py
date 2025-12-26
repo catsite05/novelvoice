@@ -22,6 +22,7 @@ class Config:
     # Upload folder configuration (使用绝对路径)
     UPLOAD_FOLDER = os.path.join(root_dir, 'uploads')
     AUDIO_FOLDER = os.path.join(root_dir, 'audio')
+    HLS_FOLDER = os.path.join(root_dir, 'hls_cache')  # HLS缓存目录
     
     # Ensure the uploads directory exists
     if not os.path.exists(UPLOAD_FOLDER):
@@ -30,3 +31,7 @@ class Config:
     # Ensure the audio directory exists
     if not os.path.exists(AUDIO_FOLDER):
         os.makedirs(AUDIO_FOLDER)
+    
+    # Ensure the HLS cache directory exists
+    if not os.path.exists(HLS_FOLDER):
+        os.makedirs(HLS_FOLDER)

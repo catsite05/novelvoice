@@ -238,7 +238,9 @@
     </div>
     
     <!-- 全局播放器脚本 -->
-    <script src="/static/js/global-player.js?v=2.3"></script>
+    <!-- HLS.js库 (用于非iOS浏览器的HLS支持) -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="/static/js/global-player.js?v=3.2"></script>
     
     {% block extra_scripts %}{% endblock %}
 </body>

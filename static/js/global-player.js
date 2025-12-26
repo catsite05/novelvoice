@@ -25,6 +25,7 @@ class GlobalAudioPlayer {
             novelTitle: '',
             chapterId: null,
             chapterTitle: '',
+            offset: 0,
             currentTime: 0,
             duration: 0,
             isPlaying: false,
@@ -136,6 +137,9 @@ class GlobalAudioPlayer {
         console.log(`  请求章节ID: ${chapterId}`);
         console.log(`  ID类型: 当前=${typeof this.currentState.chapterId}, 请求=${typeof chapterId}`);
         
+        // 清除关闭标志（开始新的播放）
+        this._isClosed = false;
+        
         // 关键优化：如果是同一章节，不重新设置 src
         if (this.currentState.chapterId == chapterId) {
             console.log('✅ 已经在播放该章节，继续播放（不重新加载）');
@@ -166,6 +170,7 @@ class GlobalAudioPlayer {
         this.currentState.chapterId = chapterId;
         this.currentState.chapterTitle = chapterTitle;
         this.currentState.chapters = chapters;
+        this.currentState.offset = 0;
         this.currentState.currentTime = 0;
         
         // 显示播放器和加载状态
@@ -178,15 +183,144 @@ class GlobalAudioPlayer {
             this.audio.pause();
         }
         
-        // 设置新的音频源
-        console.log(`切换到章节 ${chapterId}，URL: /stream/${chapterId}`);
-        this.audio.src = `/stream/${chapterId}`;
+        // 检测是否支持HLS
+        const useHLS = this._shouldUseHLS();
+        
+        if (useHLS) {
+            // 使用HLS
+            const hlsUrl = `/hls/${chapterId}/playlist.m3u8`;
+            console.log(`切换到章节 ${chapterId}，使用HLS: ${hlsUrl}`);
+            this._loadHLS(hlsUrl);
+        } else {
+            // 使用传统流式播放
+            const streamUrl = `/stream/${chapterId}`;
+            console.log(`切换到章节 ${chapterId}，使用传统流: ${streamUrl}`);
+            this.audio.src = streamUrl;
+        }
         
         // 尝试播放
         this.play();
         
         // 保存状态
         this.saveState();
+    }
+    
+    // 检测是否应该使用HLS
+    _shouldUseHLS() {
+        // iOS设备优先使用HLS
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        if (isIOS) {
+            console.log('[播放器] 检测到iOS设备，使用HLS');
+            return true;
+        }
+        
+        // 其他设备：检查是否支持HLS.js或原生HLS
+        if (window.Hls && window.Hls.isSupported()) {
+            console.log('[播放器] 支持HLS.js，使用HLS');
+            return true;
+        }
+        
+        if (this.audio.canPlayType('application/vnd.apple.mpegurl')) {
+            console.log('[播放器] 原生支持HLS，使用HLS');
+            return true;
+        }
+        
+        console.log('[播放器] 不支持HLS，使用传统流');
+        return false;
+    }
+    
+    // 加载HLS流
+    _loadHLS(url) {
+        // iOS Safari原生支持HLS
+        if (this.audio.canPlayType('application/vnd.apple.mpegurl')) {
+            console.log('[HLS] 使用原生HLS支持');
+            this.audio.src = url;
+            return;
+        }
+        
+        // 使用HLS.js (其他浏览器)
+        if (window.Hls && window.Hls.isSupported()) {
+            console.log('[HLS] 使用HLS.js');
+            
+            // 销毁旧的HLS实例
+            if (this._hls) {
+                this._hls.destroy();
+            }
+            
+            // 创建新的HLS实例
+            this._hls = new Hls({
+                debug: false,
+                enableWorker: true,
+                lowLatencyMode: true,
+            });
+            
+            this._hls.loadSource(url);
+            this._hls.attachMedia(this.audio);
+            
+            this._hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                console.log('[HLS.js] Manifest已解析');
+            });
+            
+            // 重试计数器
+            this._hlsRetryCount = 0;
+            const MAX_RETRIES = 3;
+            
+            this._hls.on(Hls.Events.ERROR, (event, data) => {
+                console.error('[HLS.js] 错误:', data);
+                
+                if (data.fatal) {
+                    switch(data.type) {
+                        case Hls.ErrorTypes.NETWORK_ERROR:
+                            // 检查是否是404错误（manifest加载失败）
+                            if (data.details === 'manifestLoadError' || data.response?.code === 404) {
+                                console.error('[HLS.js] HLS文件不存在(404)，停止加载');
+                                this._hls.destroy();
+                                this._hls = null;
+                                
+                                // 降级到传统流
+                                console.log('[HLS.js] 降级到传统流');
+                                this.audio.src = `/stream/${this.currentState.chapterId}`;
+                                break;
+                            }
+                            
+                            // 其他网络错误，有限次重试
+                            this._hlsRetryCount++;
+                            if (this._hlsRetryCount < MAX_RETRIES) {
+                                console.error(`[HLS.js] 网络错误，尝试恢复... (${this._hlsRetryCount}/${MAX_RETRIES})`);
+                                this._hls.startLoad();
+                            } else {
+                                console.error('[HLS.js] 重试次数已达上限，销毁实例');
+                                this._hls.destroy();
+                                this._hls = null;
+                                alert('音频加载失败，请稍后重试');
+                            }
+                            break;
+                            
+                        case Hls.ErrorTypes.MEDIA_ERROR:
+                            console.error('[HLS.js] 媒体错误，尝试恢复...');
+                            this._hls.recoverMediaError();
+                            break;
+                            
+                        default:
+                            console.error('[HLS.js] 致命错误，销毁实例');
+                            this._hls.destroy();
+                            this._hls = null;
+                            break;
+                    }
+                }
+            });
+            
+            // 成功加载后重置重试计数
+            this._hls.on(Hls.Events.MANIFEST_LOADED, () => {
+                this._hlsRetryCount = 0;
+            });
+            
+            return;
+        }
+        
+        // 降级到传统流
+        console.warn('[HLS] 不支持HLS，降级到传统流');
+        this.audio.src = `/stream/${this.currentState.chapterId}`;
     }
     
     play() {
@@ -284,8 +418,29 @@ class GlobalAudioPlayer {
             });
         }
 
+        // 标记为主动关闭状态，阻止错误重连
+        this._isClosed = true;
+
         this.pause();
+        
+        // 销毁HLS实例，停止所有加载
+        if (this._hls) {
+            console.log('[HLS.js] 销毁HLS实例');
+            this._hls.destroy();
+            this._hls = null;
+        }
+        
+        // 清空音频源，停止加载
+        this.audio.src = '';
+        this.audio.load();
+        
+        // 清理所有待恢复的位置标记
+        this._pendingSeekTime = 0;
+        this._expectedPlayTime = 0;
+        
         this.player.classList.remove('active');
+        
+        // 清理状态（包括localStorage）
         this.clearState();
     }
     
@@ -396,6 +551,12 @@ class GlobalAudioPlayer {
         console.error('音频加载错误:', e);
         this.playerLoading.classList.remove('active');
         
+        // 如果是用户主动关闭播放器，不进行重连
+        if (this._isClosed) {
+            console.log('播放器已关闭，跳过重连');
+            return;
+        }
+        
         // 尝试重连
         setTimeout(() => {
             console.log('尝试重新加载...');
@@ -447,7 +608,7 @@ class GlobalAudioPlayer {
         this._log(`保存状态: time=${this.currentState.currentTime?.toFixed(1)}s`);
     }
     
-    loadState() {
+    async loadState() {
         const saved = localStorage.getItem('globalPlayerState');
         if (saved) {
             try {
@@ -460,7 +621,30 @@ class GlobalAudioPlayer {
                     this._pendingSeekTime = this.currentState.currentTime || 0;
                     this._log(`设置待恢复位置: ${this._pendingSeekTime.toFixed(1)}s`);
                     
-                    this.audio.src = `/stream/${this.currentState.chapterId}`;
+                    // 检测是否使用HLS
+                    const useHLS = this._shouldUseHLS();
+                    
+                    if (useHLS) {
+                        // 尝试使用HLS播放，URL中添加保存的时间
+                        this.currentState.offset += this.currentState.currentTime || 0;
+                        const hlsUrl = `/hls/${this.currentState.chapterId}/playlist.m3u8?ts=${this.currentState.offset}`;
+                        this._log(`恢复播放: 使用HLS ${hlsUrl}`);
+
+                        // 首先清除HLS缓存，缓存清除完成后再尝试使用HLS播放
+                        fetch(`/hls/${this.currentState.chapterId}/clear`)
+                        .then(() => {
+                            // fetch成功：直接加载HLS
+                            this._loadHLS(hlsUrl);
+                        })
+                        .catch(err => {
+                            console.error('清除HLS缓存失败:', err);
+                        });
+                        
+                    } else {
+                        const streamUrl = `/stream/${this.currentState.chapterId}`;
+                        this._log(`恢复播放: 使用传统流 ${streamUrl}`);
+                        this.audio.src = streamUrl;
+                    }
                 }
             } catch (e) {
                 console.error('加载状态失败:', e);

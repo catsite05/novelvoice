@@ -1,6 +1,4 @@
-from sqlite3.dbapi2 import Timestamp
 from flask import Flask, jsonify, session, redirect, url_for, request, g, render_template
-from flask_sqlalchemy import SQLAlchemy
 from models import db, User
 from config import Config
 import os
@@ -227,127 +225,25 @@ def stream(chapter_id):
     from audio import stream_chapter
     return stream_chapter(app, chapter_id)
 
-@app.route('/hls/<int:chapter_id>/clear')
+@app.route('/hls/clear')
 @login_required
-def hls_clear(chapter_id):
+def hls_clear():
     """清除HLS转换缓存"""
     from hls_manager import get_hls_manager
     hls_manager = get_hls_manager()
-    hls_manager.cleanup_chapter_hls(chapter_id)
+    hls_manager.cleanup_chapter_hls()
     return jsonify(success=True)
 
-@app.route('/hls/<int:chapter_id>/playlist.m3u8')
+@app.route('/hls/<int:chapter_id>/stream')
 @login_required
 def hls_playlist(chapter_id):
     """返回HLS播放列表"""
-    from flask import send_from_directory, abort
-    from models import Novel, Chapter
-    from hls_manager import get_hls_manager
-    from audio_generator import generate_chapter_audio
-    import os
+    from hls_manager import stream_chapter_hls
     
-    #从URL参数表中获取ts参数
+    # 从URL参数表中获取ts参数
     timestamp = float(request.args.get('ts', '0'))
-    print(f"[HLS路由] ts参数: {timestamp}")
-
-    chapter = Chapter.query.get_or_404(chapter_id)
-    novel = Novel.query.get_or_404(chapter.novel_id)
-    
-    # 权限校验
-    if not g.current_user.is_superuser and novel.user_id != g.current_user.id:
-        abort(403)
-    
-    hls_manager = get_hls_manager()
-    hls_dir = hls_manager.get_hls_dir(chapter_id)
-    playlist_path = hls_manager.get_playlist_path(chapter_id)
-    
-    # 情况1: HLS已完全转换
-    # if hls_manager.is_hls_ready(chapter_id):
-    #     print(f"[HLS路由] 使用已完成的HLS: {playlist_path}")
-    #     response = send_from_directory(
-    #         hls_dir,
-    #         'playlist.m3u8',
-    #         mimetype='application/vnd.apple.mpegurl'
-    #     )
-    #     response.headers['Cache-Control'] = 'public, max-age=3600'  # HLS可以缓存
-    #     return response
-    
-    # 情况2: MP3已完成,但HLS未转换
-    mp3_path = os.path.join(app.config['AUDIO_FOLDER'], f'chapter_{chapter_id}.mp3')
-    if chapter.audio_status == 'complete' and os.path.exists(mp3_path):
-        print(f"[HLS路由] MP3已完成,启动HLS转换: {mp3_path}")
-        
-        # 同步转换(首次访问会阻塞几秒)
-        result = hls_manager.convert_mp3_to_hls(chapter_id, mp3_path, timestamp, force=True)
-        if result:
-            return send_from_directory(
-                hls_dir,
-                'playlist.m3u8',
-                mimetype='application/vnd.apple.mpegurl'
-            )
-        else:
-            abort(500, "HLS转换失败")
-    
-    # 情况3: MP3正在生成
-    if os.path.exists(mp3_path):
-        file_size = os.path.getsize(mp3_path)
-        if file_size > 1024 * 50:  # 至少50KB才开始转换
-            print(f"[HLS路由] MP3正在生成(大小:{file_size}),尝试转换现有部分")
-            
-            # 同步转换 (标记为正在生成，使用Event模式+增量转换)
-            result = hls_manager.convert_mp3_to_hls(chapter_id, mp3_path, timestamp, is_generating=True)
-            if result:
-                return send_from_directory(
-                    hls_dir,
-                    'playlist.m3u8',
-                    mimetype='application/vnd.apple.mpegurl'
-                )
-            else:
-                print(f"[HLS路由] 转换失败，返回404让客户端重试--1")
-                abort(404, "HLS转换失败，请稍后重试")
-    
-    # 情况4: MP3尚未开始生成,启动生成流程
-    print(f"[HLS路由] MP3尚未生成,启动音频生成: {mp3_path}")
-    print(f"\n{'='*60}")
-    print(f"开始生成章节 {chapter_id} 的音频")
-    print(f"{'='*60}\n")
-    
-    # 启动音频生成(使用audio_generator模块)
-    try:
-        generate_chapter_audio(app, chapter_id, g.current_user.id, mp3_path)
-    except Exception as e:
-        print(f"[HLS路由] 启动音频生成失败: {e}")
-        import traceback
-        traceback.print_exc()
-        abort(500, "启动音频生成失败")
-    
-    # 等待MP3文件开始生成
-    import time
-    for i in range(60):  # 最多等待30秒
-        if os.path.exists(mp3_path):
-            file_size = os.path.getsize(mp3_path)
-            if file_size > 1024 * 50:  # 至少50KB
-                print(f"[HLS路由] MP3已开始生成(大小:{file_size}),启动HLS转换")
-                
-                # 同步转换 (标记为正在生成，使用Event模式+增量转换)
-                result = hls_manager.convert_mp3_to_hls(chapter_id, mp3_path, timestamp, is_generating=True)
-                if result:
-                    response = send_from_directory(
-                        hls_dir,
-                        'playlist.m3u8',
-                        mimetype='application/vnd.apple.mpegurl'
-                    )
-                    response.headers['Cache-Control'] = 'no-cache'
-                    return response
-                else:
-                    # 转换失败,返回404让客户端重试
-                    print(f"[HLS路由] 转换失败，返回404让客户端重试--2")
-                    abort(404, "HLS转换失败,请稍后重试")
-        
-        time.sleep(0.5)
-    
-    # 超时仍未生成
-    abort(504, "音频生成超时,请稍后重试")
+    # print(f"[HLS路由] ts参数: {timestamp}")
+    return stream_chapter_hls(app, chapter_id, timestamp)
 
 @app.route('/hls/<int:chapter_id>/<path:filename>')
 @login_required
@@ -369,7 +265,7 @@ def hls_segments(chapter_id, filename):
         abort(403, "不允许的文件类型")
     
     hls_manager = get_hls_manager()
-    hls_dir = hls_manager.get_hls_dir(chapter_id)
+    hls_dir = hls_manager.get_hls_dir(g.current_user.id)
     
     # 返回分段文件
     response = send_from_directory(
@@ -549,6 +445,47 @@ def get_reading_progress(novel_id):
         })
     
     return jsonify({"error": "该小说暂无章节"}), 404
+
+
+@app.route('/novels/<int:novel_id>/llm-config', methods=['GET'])
+@login_required
+def get_novel_llm_config(novel_id):
+    """获取小说的LLM配置参数"""
+    from flask import jsonify
+    from models import Novel
+    
+    novel = Novel.query.get_or_404(novel_id)
+    if not g.current_user.is_superuser and novel.user_id != g.current_user.id:
+        return jsonify({"error": "无权限"}), 403
+    
+    return jsonify({
+        "llm_api_key": novel.llm_api_key or '',
+        "llm_base_url": novel.llm_base_url or '',
+        "llm_model": novel.llm_model or ''
+    })
+
+
+@app.route('/novels/<int:novel_id>/llm-config', methods=['POST'])
+@login_required
+def update_novel_llm_config(novel_id):
+    """更新小说的LLM配置参数"""
+    from flask import request, jsonify
+    from models import Novel
+    
+    novel = Novel.query.get_or_404(novel_id)
+    if not g.current_user.is_superuser and novel.user_id != g.current_user.id:
+        return jsonify({"error": "无权限"}), 403
+    
+    data = request.get_json(silent=True) or {}
+    
+    # 更新LLM配置，如果为空字符串则设为None
+    novel.llm_api_key = data.get('llm_api_key', '').strip() or None
+    novel.llm_base_url = data.get('llm_base_url', '').strip() or None
+    novel.llm_model = data.get('llm_model', '').strip() or None
+    
+    db.session.commit()
+    
+    return jsonify({"success": True, "message": "LLM配置更新成功"})
 
 
 if __name__ == '__main__':

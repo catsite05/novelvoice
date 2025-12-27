@@ -25,6 +25,8 @@ services:
       - /volume2/docker/novelvoice/uploads:/app/uploads
       # Persist generated audio files
       - /volume2/docker/novelvoice/audio:/app/audio
+      # Persist generated hls_cahe files
+      - /volume2/docker/novelvoice/hls_cache:/app/hls_cache
     
     restart: unless-stopped
     

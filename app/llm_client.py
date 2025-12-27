@@ -1,6 +1,7 @@
 import json
 import requests
 import os
+import re
 from typing import Dict, Any
 
 class LLMClient:
@@ -52,6 +53,9 @@ class LLMClient:
             'stream': stream  # 是否启用流式输出
         }
         
+        # 打印LLM参数
+        # print(f"[LLM] 参数: {self.api_key}, {self.base_url}, {self.model}", flush=True)
+
         # 发送请求到LLM API
         # 增加超时时间以适应大模型处理时间
         try:
@@ -98,19 +102,23 @@ class LLMClient:
                 result = response.json()
                 # 提取生成的文本
                 generated_text = result['choices'][0]['message']['content']
+                # print(f"[LLM] 生成的文本: {generated_text}", flush=True)
+            
+            # 清理文本中的控制字符和非法字符
+            cleaned_text = self._clean_text_for_json(generated_text)
             
             # 尝试解析JSON
             try:
-                voice_script = json.loads(generated_text)
+                voice_script = json.loads(cleaned_text)
                 return voice_script
             except json.JSONDecodeError:
                 # 如果LLM返回的不是有效的JSON，尝试从中提取JSON部分
                 # 这种情况可能发生在LLM在JSON前后添加了其他文本
-                json_start = generated_text.find('{')
-                json_end = generated_text.rfind('}') + 1
+                json_start = cleaned_text.find('{')
+                json_end = cleaned_text.rfind('}') + 1
                 
                 if json_start != -1 and json_end > json_start:
-                    json_text = generated_text[json_start:json_end]
+                    json_text = cleaned_text[json_start:json_end]
                     try:
                         voice_script = json.loads(json_text)
                         return voice_script
@@ -123,6 +131,26 @@ class LLMClient:
             raise Exception(f"调用LLM API时发生错误: {str(e)}")
         except KeyError as e:
             raise Exception(f"LLM API响应格式不正确: {str(e)}")
+    
+    def _clean_text_for_json(self, text: str) -> str:
+        """
+        清理文本中的控制字符和非法字符，防止JSON解析错误
+        
+        Args:
+            text (str): 待清理的文本
+            
+        Returns:
+            str: 清理后的文本
+        """
+        # 移除控制字符（保留换行符、制表符、回车符）
+        # 控制字符范围: \x00-\x1F 和 \x7F-\x9F
+        # 保留: \n (\x0A), \r (\x0D), \t (\x09)
+        cleaned = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]', '', text)
+        
+        # 移除零宽字符和其他不可见字符
+        cleaned = re.sub(r'[\u200B-\u200D\uFEFF]', '', cleaned)
+        
+        return cleaned
     
     def _build_prompt(self, content: str) -> str:
         """
@@ -167,9 +195,9 @@ class LLMClient:
   ]
 }}
 
-### 角色对白前导语的处理方法
-角色对白的前导语需分不同情况进行处理。
-（1） 如果前导语中包含有角色的动作、表情、心情等内容，需要将前导语单独放在一个旁白片段中。
+### 角色对话引导语的处理方法
+角色对话引导语需分不同情况进行处理。
+（1） 如果引导语中包含有角色的动作、表情、心情等内容，需要完整保留引导语并单独放在一个旁白片段中。
 举例说明。
 原文：苏剑笑微笑着道："你明天就在客栈中安心等我的好消息吧。"
 应生成两个片段：
@@ -179,16 +207,26 @@ class LLMClient:
     }},
     {{
       "charactor": "苏剑笑",
-      "text": ""你明天就在客栈中安心等我的好消息吧。""
+      "text": "“你明天就在客栈中安心等我的好消息吧。”"
+    }}
+原文：李素云白了他一眼，微微有些生气地道：“我只是想听听你的看法。”
+应生成两个片段：
+    {{
+      "charactor": "旁白",
+      "text": "李素云白了他一眼，微微有些生气地道"
+    }},
+    {{
+      "charactor": "李素云",
+      "text": "“我只是想听听你的看法。”"
     }}
 
-（2）如果前导语只是简单的XX道、XX说，则需将前导语忽略。
+（2）如果引导语只是简单的XX道、XX说，则需将引导语忽略。
 举例说明。
 原文：李素云道："我不需要你做什么，只是想知道，倘若有一天我死了，你会喜欢上其他女孩子么？"
 应只生成一个片段：
      {{
       "charactor": "李素云",
-      "text": ""我不需要你做什么，只是想知道，倘若有一天我死了，你会喜欢上其他女孩子么？""
+      "text": "“我不需要你做什么，只是想知道，倘若有一天我死了，你会喜欢上其他女孩子么？”"
     }}
 
 ### 待处理内容

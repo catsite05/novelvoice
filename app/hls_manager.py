@@ -6,8 +6,10 @@ import os
 import subprocess
 import threading
 from threading import Lock
+from flask import g, abort, send_file, send_from_directory
 import time
-
+from audio_generator import check_chapter_generating, generate_chapter_audio
+from models import Chapter, Novel
 
 class HLSManager:
     """HLS转换和管理器"""
@@ -29,17 +31,22 @@ class HLSManager:
             os.makedirs(self.hls_base_dir)
             print(f"[HLS管理器] 创建HLS缓存目录: {self.hls_base_dir}")
     
-    def get_hls_dir(self, chapter_id):
+    def get_hls_dir(self, user_id):
         """获取章节的HLS目录路径"""
-        return os.path.join(self.hls_base_dir, f'chapter_{chapter_id}')
+        return os.path.join(self.hls_base_dir, f'user_{user_id}')
     
-    def get_playlist_path(self, chapter_id):
+    def get_playlist_path(self, user_id):
         """获取章节的playlist.m3u8路径"""
-        return os.path.join(self.get_hls_dir(chapter_id), 'playlist.m3u8')
+        return os.path.join(self.get_hls_dir(user_id), 'playlist.m3u8')
     
-    def is_hls_ready(self, chapter_id):
+    def is_hls_exists(self, user_id):
         """检查HLS是否已经转换完成"""
-        playlist_path = self.get_playlist_path(chapter_id)
+        playlist_path = self.get_playlist_path(user_id)
+        return os.path.exists(playlist_path)
+
+    def is_hls_ready(self, user_id):
+        """检查HLS是否已经转换完成"""
+        playlist_path = self.get_playlist_path(user_id)
         if not os.path.exists(playlist_path):
             return False
         
@@ -51,12 +58,12 @@ class HLSManager:
         except:
             return False
     
-    def _get_conversion_lock(self, chapter_id):
+    def _get_conversion_lock(self, user_id):
         """获取章节的转换锁"""
         with self._global_lock:
-            if chapter_id not in self._conversion_locks:
-                self._conversion_locks[chapter_id] = Lock()
-            return self._conversion_locks[chapter_id]
+            if user_id not in self._conversion_locks:
+                self._conversion_locks[user_id] = Lock()
+            return self._conversion_locks[user_id]
     
     def _get_playlist_duration(self, playlist_path):
         """
@@ -118,11 +125,11 @@ class HLSManager:
                 with open(playlist_path, 'w', encoding='utf-8') as f:
                     f.write(content)
                 
-                print(f"[HLS管理器] 已移除ENDLIST标记，支持边生成边播放")
+                # print(f"[HLS管理器] 已移除ENDLIST标记，支持边生成边播放")
         except Exception as e:
             print(f"[HLS管理器] 移除ENDLIST失败: {e}")
     
-    def _build_base_ffmpeg_cmd(self, mp3_path, segment_pattern, playlist_path, playlist_type, start_time):
+    def _build_base_ffmpeg_cmd(self, mp3_path, segment_pattern, playlist_path, start_time):
         """
         构建基础的 FFmpeg HLS 转换命令（首次转换）
         
@@ -138,21 +145,21 @@ class HLSManager:
         return [
             'ffmpeg',
             '-ss', str(start_time),             # 🔑 跳过已转换部分
+            # '-t', '60',                            # 每次处理60秒
             '-i', mp3_path,
-            '-c:a', 'copy',                     # 直接复制MP3流，不转码
+            '-c:a', 'aac',                     
             '-f', 'hls',                        # 输出格式HLS
-            '-hls_time', '6',                   # 每段6秒
-            '-hls_list_size', '0',              # 保留所有分段
-            '-hls_playlist_type', playlist_type, # event=无ENDLIST, vod=有ENDLIST
+            '-hls_time', '9999',                # 整个文件成一段
+            '-hls_list_size', '0',              # 如果要保留所有分段设为0
+            # '-hls_playlist_type', playlist_type, # event=无ENDLIST, vod=有ENDLIST
             '-hls_segment_type', 'mpegts',      # 使用MPEG-TS容器
             '-hls_flags', 'independent_segments+append_list', # 🔑 追加模式，自动计算编号
             '-hls_segment_filename', segment_pattern,
-            '-y',                               # 覆盖已存在的文件
+            # '-y',                               # 覆盖已存在的文件
             playlist_path
         ]
     
-    def _build_incremental_ffmpeg_cmd(self, mp3_path, segment_pattern, playlist_path, 
-                                       start_time, start_segment):
+    def _build_incremental_ffmpeg_cmd(self, mp3_path, segment_pattern, playlist_path, start_time):
         """
         构建增量 FFmpeg HLS 转换命令（追加新分段）
         
@@ -166,15 +173,19 @@ class HLSManager:
         Returns:
             list: FFmpeg命令参数列表
         """
-        # 注意：-hls_start_number 在 FFmpeg 6.1 中不支持
         # 使用 append_list 时，FFmpeg 会自动从 playlist 读取已有分段编号
+
+        # 用iPhone safari浏览器访问时，第一次必须生成多个分段，否则会重复下载第一个分段，不知道是什么原因
+        duration = 60 if start_time > 0 else 12
+        slice = 60 if start_time > 0 else 6
         return [
             'ffmpeg',
             '-ss', str(start_time),             # 🔑 跳过已转换部分
+            '-t', str(duration),
             '-i', mp3_path,
-            '-c:a', 'copy',
+            '-c:a', 'aac',
             '-f', 'hls',
-            '-hls_time', '6',
+            '-hls_time', str(slice),
             '-hls_list_size', '0',
             # '-hls_playlist_type', 'live',      # live模式（无ENDLIST）
             '-hls_segment_type', 'mpegts',
@@ -183,7 +194,7 @@ class HLSManager:
             playlist_path
         ]
     
-    def convert_mp3_to_hls(self, chapter_id, mp3_path, timestamp, force=False, is_generating=False):
+    def convert_mp3_to_hls(self, mp3_path, timestamp, is_generating=False):
         """
         将MP3转换为HLS格式（支持增量转换）
         
@@ -197,14 +208,14 @@ class HLSManager:
             str: playlist.m3u8的路径,转换失败返回None
         """
         # 获取转换锁,防止重复转换
-        lock = self._get_conversion_lock(chapter_id)
+        lock = self._get_conversion_lock(g.current_user.id)
         
         if not lock.acquire(blocking=False):
-            print(f"[HLS转换] 章节 {chapter_id} 正在转换中,跳过")
+            print(f"[HLS转换] 用户 {g.current_user.id} 缓存正在转换中,跳过")
             # 等待转换完成
             lock.acquire()
             lock.release()
-            return self.get_playlist_path(chapter_id)
+            return self.get_playlist_path(g.current_user.id)
         
         try:
             # 检查MP3文件是否存在
@@ -212,18 +223,18 @@ class HLSManager:
                 print(f"[HLS转换] MP3文件不存在: {mp3_path}")
                 return None
             
+            # 如果转换已经完成，直接返回
+            if self.is_hls_ready(g.current_user.id):
+                print(f"[HLS转换] MP3已转换完成，遇到重复请求")
+                return self.get_playlist_path(g.current_user.id)
+
             # 创建HLS目录
-            hls_dir = self.get_hls_dir(chapter_id)
+            hls_dir = self.get_hls_dir(g.current_user.id)
             os.makedirs(hls_dir, exist_ok=True)
             
-            playlist_path = self.get_playlist_path(chapter_id)
+            playlist_path = self.get_playlist_path(g.current_user.id)
             segment_pattern = os.path.join(hls_dir, 'segment_%03d.ts')
-            
-            # 检查是否已转换完成
-            if not force and not is_generating and self.is_hls_ready(chapter_id):
-                print(f"[HLS转换] 章节 {chapter_id} 已经转换完成: {playlist_path}")
-                return playlist_path
-            
+                        
             # 决定转换模式
             existing_segments = self._count_segments(hls_dir)
             # 🔑 精确计算开始时间：从 playlist 读取实际时长
@@ -233,20 +244,17 @@ class HLSManager:
             if is_generating:
                 # 增量转换模式：MP3正在生成且已有分段
                 cmd = self._build_incremental_ffmpeg_cmd(
-                    mp3_path, segment_pattern, playlist_path, 
-                    start_time, existing_segments
+                    mp3_path, segment_pattern, playlist_path, start_time
                 )
-                print(f"[HLS转换] 增量模式: 从{start_time:.2f}秒开始, 分段编号{existing_segments}")
+                # print(f"[HLS转换] 增量模式: 章节 {chapter_id} 从{start_time:.2f}秒开始, 分段编号{existing_segments}")
             else:
                 # 全量转换模式：MP3已完成
-                playlist_type = 'vod'
                 cmd = self._build_base_ffmpeg_cmd(
-                    mp3_path, segment_pattern, playlist_path, playlist_type, start_time
+                    mp3_path, segment_pattern, playlist_path, start_time
                 )
-                print(f"[HLS转换] 完整转换")
+                # print(f"[HLS转换] 完整转换: 章节 {chapter_id} 从{start_time:.2f}秒开始")
             
-            print(f"[HLS转换] 开始转换章节 {chapter_id}: {mp3_path}")
-            print(f"[HLS转换] 命令: {' '.join(cmd)}")
+            # print(f"[HLS转换] 命令: {' '.join(cmd)}")
             
             # 执行FFmpeg命令
             start_ts = time.time()
@@ -271,7 +279,7 @@ class HLSManager:
                self._remove_endlist_if_exists(playlist_path)
             
             # 验证转换结果
-            if not is_generating and not self.is_hls_ready(chapter_id):
+            if not is_generating and not self.is_hls_exists(g.current_user.id):
                 print(f"[HLS转换] ⚠️  警告: playlist.m3u8未包含结束标记")
             
             return playlist_path
@@ -295,7 +303,7 @@ class HLSManager:
             is_generating: MP3是否还在生成中
         """
         def worker():
-            result = self.convert_mp3_to_hls(chapter_id, mp3_path, is_generating=is_generating)
+            result = self.convert_mp3_to_hls(mp3_path, is_generating=is_generating)
             if callback:
                 callback(result is not None, result)
         
@@ -303,67 +311,7 @@ class HLSManager:
         thread.start()
         return thread
     
-    def convert_partial_mp3_to_hls(self, chapter_id, mp3_path):
-        """
-        将正在生成的MP3部分转换为HLS（实时追加模式）
-        
-        注意: 这个方法会持续监听MP3文件的增长,直到文件生成完成
-        适用于边生成边播放的场景
-        
-        Args:
-            chapter_id: 章节ID
-            mp3_path: MP3文件路径(可能正在增长)
-        
-        Returns:
-            str: playlist.m3u8的路径
-        """
-        hls_dir = self.get_hls_dir(chapter_id)
-        os.makedirs(hls_dir, exist_ok=True)
-        
-        playlist_path = self.get_playlist_path(chapter_id)
-        segment_pattern = os.path.join(hls_dir, 'segment_%03d.ts')
-        
-        print(f"[HLS实时转换] 开始监听MP3文件: {mp3_path}")
-        
-        # 使用FFmpeg的实时模式
-        # 注意: 这需要MP3文件以追加模式写入
-        cmd = [
-            'ffmpeg',
-            '-re',                              # 实时模式
-            '-i', mp3_path,
-            '-c:a', 'copy',
-            '-f', 'hls',
-            '-hls_time', '6',
-            '-hls_list_size', '0',
-            '-hls_flags', 'append_list+split_by_time',  # 实时追加模式
-            '-hls_segment_type', 'mpegts',
-            '-hls_segment_filename', segment_pattern,
-            playlist_path
-        ]
-        
-        print(f"[HLS实时转换] 命令: {' '.join(cmd)}")
-        
-        try:
-            # 非阻塞方式启动FFmpeg进程
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            
-            print(f"[HLS实时转换] FFmpeg进程已启动 (PID: {process.pid})")
-            
-            # 返回playlist路径,让客户端可以开始播放
-            return playlist_path
-            
-        except Exception as e:
-            print(f"[HLS实时转换] 启动失败: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
-    
-    def get_hls_status(self, chapter_id):
+    def get_hls_status(self, user_id):
         """
         获取HLS转换状态
         
@@ -375,7 +323,7 @@ class HLSManager:
                 'duration': float       # 总时长(秒)
             }
         """
-        playlist_path = self.get_playlist_path(chapter_id)
+        playlist_path = self.get_playlist_path(user_id)
         
         status = {
             'ready': False,
@@ -410,25 +358,25 @@ class HLSManager:
         
         return status
     
-    def cleanup_chapter_hls(self, chapter_id):
+    def cleanup_chapter_hls(self):
         """
         清理章节的HLS缓存
         
         Args:
             chapter_id: 章节ID
         """
-        hls_dir = self.get_hls_dir(chapter_id)
+        hls_dir = self.get_hls_dir(g.current_user.id)
         
         if not os.path.exists(hls_dir):
             return
         
-        lock = self._get_conversion_lock(chapter_id)
+        lock = self._get_conversion_lock(g.current_user.id)
         lock.acquire()
             
         try:
             import shutil
             shutil.rmtree(hls_dir)
-            print(f"[HLS清理] 已删除章节 {chapter_id} 的HLS缓存")
+            print(f"[HLS清理] 已删除用户 {g.current_user.id} 的HLS缓存")
         except Exception as e:
             print(f"[HLS清理] 删除失败: {e}")
 
@@ -443,3 +391,90 @@ def get_hls_manager(hls_base_dir='hls_cache'):
     if _hls_manager is None:
         _hls_manager = HLSManager(hls_base_dir)
     return _hls_manager
+
+def stream_chapter_hls(app, chapter_id, timestamp):
+    chapter = Chapter.query.get_or_404(chapter_id)
+    novel = Novel.query.get_or_404(chapter.novel_id)
+    
+    # 权限校验
+    if not g.current_user.is_superuser and novel.user_id != g.current_user.id:
+        abort(403)
+    
+    hls_manager = get_hls_manager()
+    hls_dir = hls_manager.get_hls_dir(g.current_user.id)
+    mp3_path = os.path.join(app.config['AUDIO_FOLDER'], f'chapter_{chapter_id}.mp3')
+
+    # 情况1: MP3已完成,且未进行HLS转换
+    if chapter.audio_status == 'complete' and os.path.exists(mp3_path) and not hls_manager.is_hls_exists(g.current_user.id):
+        print(f"[HLS路由] MP3已完成,且未进行HLS转换, 直接返回MP3文件: {mp3_path}")
+        return send_file(mp3_path, mimetype='audio/mpeg')
+
+    # 情况2: MP3已完成,但HLS转换已在进行中
+    if chapter.audio_status == 'complete' and os.path.exists(mp3_path):
+        print(f"[HLS转换] MP3已完成, 继续HLS转换: {mp3_path}")
+        result = hls_manager.convert_mp3_to_hls(mp3_path, timestamp)
+        if result:
+            return send_from_directory(
+                hls_dir,
+                'playlist.m3u8',
+                mimetype='application/vnd.apple.mpegurl'
+            )
+        else:
+            abort(500, "HLS转换失败")
+    
+    # 情况3: MP3正在生成，继续转换
+    if check_chapter_generating(g.current_user.id, chapter_id) and os.path.exists(mp3_path):
+        # print(f"[HLS转换] MP3正在生成(大小:{file_size}),尝试转换现有部分")
+        result = hls_manager.convert_mp3_to_hls(mp3_path, timestamp, is_generating=True)
+        if result:
+            return send_from_directory(
+                hls_dir,
+                'playlist.m3u8',
+                mimetype='application/vnd.apple.mpegurl'
+            )
+        else:
+            print(f"[HLS转换] 转换失败，返回404让客户端重试--1")
+            abort(404, "HLS转换失败，请稍后重试")
+    
+    # 情况4: MP3尚未开始生成,启动生成流程
+    print(f"[HLS转换] MP3尚未生成,启动音频生成: {mp3_path}")
+    print(f"\n{'='*60}")
+    print(f"开始生成章节 {chapter_id} 的音频")
+    print(f"{'='*60}\n")
+    
+    # 启动音频生成(使用audio_generator模块)
+    try:
+        generate_chapter_audio(app, chapter_id, g.current_user.id, mp3_path)
+    except Exception as e:
+        print(f"[HLS路由] 启动音频生成失败: {e}")
+        import traceback
+        traceback.print_exc()
+        abort(500, "启动音频生成失败")
+    
+    # 等待MP3文件开始生成
+    import time
+    for i in range(60):  # 最多等待30秒
+        if os.path.exists(mp3_path):
+            file_size = os.path.getsize(mp3_path)
+            if file_size > 1024 * 50:  # 至少50KB
+                print(f"[HLS路由] MP3已开始生成(大小:{file_size}),启动HLS转换")
+                
+                # 同步转换 (标记为正在生成，使用Event模式+增量转换)
+                result = hls_manager.convert_mp3_to_hls(mp3_path, timestamp, is_generating=True)
+                if result:
+                    response = send_from_directory(
+                        hls_dir,
+                        'playlist.m3u8',
+                        mimetype='application/vnd.apple.mpegurl'
+                    )
+                    response.headers['Cache-Control'] = 'no-cache'
+                    return response
+                else:
+                    # 转换失败,返回404让客户端重试
+                    print(f"[HLS路由] 转换失败，返回404让客户端重试--2")
+                    abort(404, "HLS转换失败,请稍后重试")
+        
+        time.sleep(0.5)
+    
+    # 超时仍未生成
+    abort(504, "音频生成超时,请稍后重试")

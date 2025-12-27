@@ -107,12 +107,38 @@
             transition: opacity 0.3s ease;
         }
         
-        .novel-item:hover .delete-btn {
+        .config-btn {
+            position: absolute;
+            top: 10px;
+            right: 45px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            font-size: 16px;
+        }
+        
+        .novel-item:hover .delete-btn,
+        .novel-item:hover .config-btn {
             opacity: 1;
         }
         
         .delete-btn:hover {
             background: #ff6b81;
+            transform: scale(1.1);
+        }
+        
+        .config-btn:hover {
+            background: #764ba2;
             transform: scale(1.1);
         }
         
@@ -187,6 +213,140 @@
                 padding: 15px;
             }
         }
+        
+        /* LLM配置弹窗样式 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+        }
+        
+        .modal-content {
+            background: white;
+            margin: 10% auto;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            animation: slideDown 0.3s ease;
+        }
+        
+        @keyframes slideDown {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .modal-header h2 {
+            color: #333;
+            margin: 0;
+        }
+        
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 28px;
+            color: #999;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.3s;
+        }
+        
+        .close-btn:hover {
+            color: #333;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: bold;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            box-sizing: border-box;
+            transition: border-color 0.3s;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .form-group small {
+            display: block;
+            margin-top: 5px;
+            color: #999;
+            font-size: 12px;
+        }
+        
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 25px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+        
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
     </style>
 {% endblock %}
 
@@ -209,6 +369,38 @@
         <p>想要添加更多小说？</p>
         <a href="/" class="upload-btn">📤 上传新小说</a>
     </div>
+    
+    <!-- LLM配置弹窗 -->
+    <div id="llmConfigModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚡ LLM 配置</h2>
+                <button class="close-btn" onclick="closeLLMConfig()">×</button>
+            </div>
+            <form id="llmConfigForm">
+                <input type="hidden" id="configNovelId" name="novel_id">
+                <div class="form-group">
+                    <label for="llmApiKey">API Key</label>
+                    <input type="text" id="llmApiKey" name="llm_api_key" placeholder="输入LLM API密钥">
+                    <small>留空则使用默认环境变量配置</small>
+                </div>
+                <div class="form-group">
+                    <label for="llmBaseUrl">Base URL</label>
+                    <input type="text" id="llmBaseUrl" name="llm_base_url" placeholder="输入LLM API基础URL">
+                    <small>留空则使用默认环境变量配置</small>
+                </div>
+                <div class="form-group">
+                    <label for="llmModel">模型名称</label>
+                    <input type="text" id="llmModel" name="llm_model" placeholder="输入LLM模型名称">
+                    <small>留空则使用默认环境变量配置</small>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeLLMConfig()">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -226,6 +418,7 @@
                             <div class="novel-title">${novel.title}</div>
                             <div class="novel-author">作者: ${novel.author || '未知'}</div>
                             <div class="novel-date">上传时间: ${novel.upload_date ? new Date(novel.upload_date).toLocaleString() : '未知'}</div>
+                            <button class="config-btn" onclick="openLLMConfig(event, ${novel.id}, '${novel.title}')">⚙️</button>
                             <button class="delete-btn" onclick="deleteNovel(event, ${novel.id}, '${novel.title}')">×</button>
                         `;
                         // 点击小说卡片跳转到最后阅读的章节
@@ -284,6 +477,76 @@
                 });
             }
         }
+        
+        // LLM配置相关函数
+        function openLLMConfig(event, novelId, novelTitle) {
+            event.stopPropagation(); // 阻止事件冒泡
+            
+            // 设置当前配置的小说ID
+            document.getElementById('configNovelId').value = novelId;
+            
+            // 获取当前小说的LLM配置
+            fetch(`/novels/${novelId}/llm-config`)
+                .then(response => response.json())
+                .then(data => {
+                    // 填充表单
+                    document.getElementById('llmApiKey').value = data.llm_api_key || '';
+                    document.getElementById('llmBaseUrl').value = data.llm_base_url || '';
+                    document.getElementById('llmModel').value = data.llm_model || '';
+                    
+                    // 显示弹窗
+                    document.getElementById('llmConfigModal').style.display = 'block';
+                })
+                .catch(error => {
+                    console.error('Error fetching LLM config:', error);
+                    alert('获取LLM配置失败！');
+                });
+        }
+        
+        function closeLLMConfig() {
+            document.getElementById('llmConfigModal').style.display = 'none';
+        }
+        
+        // 处理LLM配置表单提交
+        document.getElementById('llmConfigForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const novelId = document.getElementById('configNovelId').value;
+            const formData = {
+                llm_api_key: document.getElementById('llmApiKey').value.trim(),
+                llm_base_url: document.getElementById('llmBaseUrl').value.trim(),
+                llm_model: document.getElementById('llmModel').value.trim()
+            };
+            
+            fetch(`/novels/${novelId}/llm-config`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('LLM配置保存成功！');
+                    closeLLMConfig();
+                } else {
+                    alert(`保存失败: ${data.message || '未知错误'}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error saving LLM config:', error);
+                alert('保存LLM配置时发生错误！');
+            });
+        });
+        
+        // 点击弹窗外部关闭
+        window.onclick = function(event) {
+            const modal = document.getElementById('llmConfigModal');
+            if (event.target === modal) {
+                closeLLMConfig();
+            }
+        };
     </script>
 </div>
 {% endblock %}

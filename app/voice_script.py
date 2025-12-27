@@ -2,19 +2,22 @@ import json
 from llm_client import LLMClient
 from models import Character, db
 
-def generate_voice_script(content, stream=False):
+def generate_voice_script(content, stream=False, llm_api_key=None, llm_base_url=None, llm_model=None):
     """
     调用LLM生成配音脚本，并进行后处理转换
     
     Args:
         content (str): 待处理的文本内容
         stream (bool): 是否启用流式输出
+        llm_api_key (str): LLM API密钥（可选，用于小说专有配置）
+        llm_base_url (str): LLM Base URL（可选，用于小说专有配置）
+        llm_model (str): LLM模型名称（可选，用于小说专有配置）
         
     Returns:
         list: 转换后的配音脚本列表
     """
-    # 创建LLM客户端
-    llm_client = LLMClient()
+    # 创建LLM客户端，使用传入的参数（如果提供）
+    llm_client = LLMClient(api_key=llm_api_key, base_url=llm_base_url, model=llm_model)
     
     # 调用LLM生成配音脚本（无论是否流式，都会返回结果）
     voice_script = llm_client.generate_voice_script(content, stream=stream)

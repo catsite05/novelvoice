@@ -4,7 +4,7 @@ import threading
 from datetime import datetime
 from models import Novel, Chapter, db
 from chapter import split_novel_into_chapters
-from audio import preprocess_chapter_script
+from audio_generator import preprocess_chapter_script
 
 def upload_file(app):
     if 'file' not in request.files:

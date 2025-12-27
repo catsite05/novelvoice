@@ -29,8 +29,13 @@ class GlobalAudioPlayer {
             currentTime: 0,
             duration: 0,
             isPlaying: false,
-            chapters: []
+            chapters: [],
+            useHLS: false,
+            isIOS: false
         };
+
+        this.currentState.useHLS = this._shouldUseHLS();
+        this.currentState.isIOS = this._isIOS();
         
         // 【调试面板】用于在iPhone上显示调试信息
         this._initDebugPanel();
@@ -141,6 +146,7 @@ class GlobalAudioPlayer {
         this._isClosed = false;
         
         // 关键优化：如果是同一章节，不重新设置 src
+        /*
         if (this.currentState.chapterId == chapterId) {
             console.log('✅ 已经在播放该章节，继续播放（不重新加载）');
             
@@ -160,7 +166,8 @@ class GlobalAudioPlayer {
         }
         
         console.log('⚠️ 检测到章节切换，需要重新加载音频');
-        
+        */
+       
         // 保存旧的章节 ID（用于判断是否需要中止旧请求）
         const oldChapterId = this.currentState.chapterId;
         
@@ -186,25 +193,36 @@ class GlobalAudioPlayer {
         // 检测是否支持HLS
         const useHLS = this._shouldUseHLS();
         
-        if (useHLS) {
-            // 使用HLS
-            const hlsUrl = `/hls/${chapterId}/playlist.m3u8`;
-            console.log(`切换到章节 ${chapterId}，使用HLS: ${hlsUrl}`);
-            this._loadHLS(hlsUrl);
-        } else {
-            // 使用传统流式播放
-            const streamUrl = `/stream/${chapterId}`;
-            console.log(`切换到章节 ${chapterId}，使用传统流: ${streamUrl}`);
-            this.audio.src = streamUrl;
-        }
-        
-        // 尝试播放
-        this.play();
-        
-        // 保存状态
-        this.saveState();
+        // 先清理缓存再启动播放
+        fetch(`/hls/clear`)
+            .then(() => {
+                if (useHLS) {
+                    // 使用HLS
+                    const hlsUrl = `/hls/${chapterId}/stream`;
+                    console.log(`切换到章节 ${chapterId}，使用HLS: ${hlsUrl}`);
+                    this._loadHLS(hlsUrl);
+                } else {
+                    // 使用传统流式播放
+                    const streamUrl = `/stream/${chapterId}`;
+                    console.log(`切换到章节 ${chapterId}，使用传统流: ${streamUrl}`);
+                    this.audio.src = streamUrl;
+                }
+                
+                // 尝试播放
+                this.play();
+                
+                // 保存状态
+                this.saveState();
+            })
+            .catch(err => {
+                console.error('[HLS] 缓存清理失败:', err);
+            });
     }
     
+    _isIOS() {
+        return /iPad|iPhone|iPod/.test(navigator.userAgent);
+    }
+
     // 检测是否应该使用HLS
     _shouldUseHLS() {
         // iOS设备优先使用HLS
@@ -622,24 +640,29 @@ class GlobalAudioPlayer {
                     this._log(`设置待恢复位置: ${this._pendingSeekTime.toFixed(1)}s`);
                     
                     // 检测是否使用HLS
-                    const useHLS = this._shouldUseHLS();
-                    
+                    const useHLS = this._shouldUseHLS(this.currentState.chapterId);
+                    const isIOS = this._isIOS();
+
                     if (useHLS) {
                         // 尝试使用HLS播放，URL中添加保存的时间
                         this.currentState.offset += this.currentState.currentTime || 0;
-                        const hlsUrl = `/hls/${this.currentState.chapterId}/playlist.m3u8?ts=${this.currentState.offset}`;
-                        this._log(`恢复播放: 使用HLS ${hlsUrl}`);
-
-                        // 首先清除HLS缓存，缓存清除完成后再尝试使用HLS播放
-                        fetch(`/hls/${this.currentState.chapterId}/clear`)
-                        .then(() => {
-                            // fetch成功：直接加载HLS
+                        if(isIOS) {
+                            const hlsUrl = `/hls/${this.currentState.chapterId}/stream`; // IOS可以自动跳转到断点位置
                             this._loadHLS(hlsUrl);
-                        })
-                        .catch(err => {
-                            console.error('清除HLS缓存失败:', err);
-                        });
-                        
+                        }
+                        else {
+                            const hlsUrl = `/hls/${this.currentState.chapterId}/stream?ts=${this.currentState.offset}`;
+                            // 首先清除HLS缓存，缓存清除完成后再尝试使用HLS播放
+                            fetch(`/hls/clear`)
+                            .then(() => {
+                                // fetch成功：直接加载HLS
+                                this._loadHLS(hlsUrl);
+                            })
+                            .catch(err => {
+                                console.error('清除HLS缓存失败:', err);
+                            });
+                        }
+                       
                     } else {
                         const streamUrl = `/stream/${this.currentState.chapterId}`;
                         this._log(`恢复播放: 使用传统流 ${streamUrl}`);

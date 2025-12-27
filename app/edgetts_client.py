@@ -31,8 +31,7 @@ class EdgeTTSClient:
         Yields:
             bytes: 音频数据块
         """
-        print(f"\n[EdgeTTS] 开始流式生成音频")
-        print(f"[EdgeTTS] 脚本段落数: {len(voice_script)}")
+        # print(f"\n[EdgeTTS] 开始流式生成音频，脚本段落数: {len(voice_script)}")
         
         loop = None
         async_gen = None
@@ -114,7 +113,7 @@ class EdgeTTSClient:
                             print(f"[EdgeTTS] 第 {i+1} 段生成失败: {error_msg}")
                             raise
             
-            print(f"\n[EdgeTTS] 所有段落生成完成\n")
+            # print(f"\n[EdgeTTS] 所有段落生成完成\n")
         
         # 运行异步生成器并同步yield结果
         try:
@@ -181,8 +180,7 @@ class EdgeTTSClient:
         Returns:
             bool: 是否成功生成音频文件
         """
-        print(f"\n[EdgeTTS] 生成音频文件: {output_path}")
-        print(f"[EdgeTTS] 脚本段落数: {len(voice_script)}")
+        print(f"[EdgeTTS] 生成音频文件: {output_path}， [EdgeTTS] 脚本段落数: {len(voice_script)}")
         
         try:
             # 打开输出文件
@@ -191,7 +189,7 @@ class EdgeTTSClient:
                 for chunk in self.generate_audio_stream(voice_script):
                     f.write(chunk)
             
-            print(f"\n✅ 音频文件生成成功: {output_path}\n")
+            # print(f"✅ 音频文件生成成功: {output_path}\n")
             return True
             
         except Exception as e:

@@ -6,6 +6,7 @@ import os
 import threading
 import queue
 import json
+import time
 from models import Novel, Chapter, db
 from flask import g, abort
 from chapter import _read_chapter_content
@@ -13,6 +14,97 @@ from voice_script import generate_voice_script
 from easyvoice_client import EasyVoiceClient
 from edgetts_client import EdgeTTSClient
 
+
+# ===== 断点续传相关函数 =====
+
+def _get_resume_file_path(audio_path):
+    """获取断点文件路径"""
+    return audio_path.replace('.mp3', '.resume.json')
+
+
+def _load_resume_point(audio_path):
+    """
+    加载断点信息
+
+    Returns:
+        dict or None: 断点信息，包含：
+            - segment_index: 最后完成的segment索引
+            - last_completed_item: 该segment中最后完成的item索引
+            - audio_file_size: 当前音频文件大小
+    """
+    resume_file = _get_resume_file_path(audio_path)
+    if not os.path.exists(resume_file):
+        return None
+
+    try:
+        with open(resume_file, 'r', encoding='utf-8') as f:
+            resume_data = json.load(f)
+
+        # 验证音频文件是否存在（暂不验证大小匹配）
+        if os.path.exists(audio_path):
+            # actual_size = os.path.getsize(audio_path)
+            # expected_size = resume_data.get('audio_file_size', 0)
+
+            # if actual_size == expected_size:
+            #     print(f"[断点续传] 找到有效断点: segment={resume_data.get('segment_index')}, "
+            #           f"item={resume_data.get('last_completed_item')}, size={actual_size}")
+            #     return resume_data
+            # else:
+            #     print(f"[断点续传] 音频文件大小不匹配 (实际: {actual_size}, 预期: {expected_size})，忽略断点")
+            #     return None
+            return resume_data
+        else:
+            print(f"[断点续传] 音频文件不存在，忽略断点")
+            return None
+
+    except Exception as e:
+        print(f"[断点续传] 加载断点文件失败: {e}")
+        return None
+
+
+def _save_resume_point(audio_path, chapter_id, segment_index, last_completed_item):
+    """
+    保存断点信息
+
+    Args:
+        audio_path: 音频文件路径
+        chapter_id: 章节ID
+        segment_index: 当前segment索引
+        last_completed_item: 该segment中最后完成的item索引
+    """
+    try:
+        resume_file = _get_resume_file_path(audio_path)
+        audio_file_size = os.path.getsize(audio_path) if os.path.exists(audio_path) else 0
+
+        resume_data = {
+            'chapter_id': chapter_id,
+            'segment_index': segment_index,
+            'last_completed_item': last_completed_item,
+            'audio_file_size': audio_file_size,
+            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+        }
+
+        with open(resume_file, 'w', encoding='utf-8') as f:
+            json.dump(resume_data, f, ensure_ascii=False, indent=2)
+
+        # print(f"[断点续传] 保存断点: segment={segment_index}, item={last_completed_item}, size={audio_file_size}")
+
+    except Exception as e:
+        print(f"[断点续传] 保存断点文件失败: {e}")
+
+
+def _delete_resume_file(audio_path):
+    """删除断点文件"""
+    try:
+        resume_file = _get_resume_file_path(audio_path)
+        if os.path.exists(resume_file):
+            os.remove(resume_file)
+            print(f"[断点续传] 删除断点文件: {resume_file}")
+    except Exception as e:
+        print(f"[断点续传] 删除断点文件失败: {e}")
+
+
+# ===== 原有代码 =====
 
 class GenerationManager:
     """管理章节音频生成任务,支持多用户并发(每个用户最多同时生成1个章节)。"""
@@ -253,7 +345,7 @@ def preprocess_chapter_script(chapter_id):
     first_segment = segments[0]
     
     # 检查是否已有保存的脚本
-    script_folder = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'audio', 'script')
+    script_folder = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'audio', 'script', f'novel-{novel.id}')
     script_cache_path = os.path.join(script_folder, f'chapter_{chapter_id}_segment_0_script.json')
     
     # 如果已经有缓存的脚本，直接返回
@@ -295,18 +387,26 @@ def is_chapter_script_ready(chapter_id):
     """
     检查指定章节的第一个分段配音脚本是否已生成
     """
+    # 查询章节和小说信息
+    chapter = Chapter.query.get(chapter_id)
+    if not chapter:
+        return False
+
+    novel = Novel.query.get(chapter.novel_id)
+    if not novel:
+        return False
+
     # 权限校验：仅在有请求上下文时检查
     try:
         user = g.current_user
+        if user is not None:
+            if not user.is_superuser and novel.user_id != user.id:
+                abort(403)
     except Exception:
-        user = None
-    if user is not None:
-        chapter = Chapter.query.get_or_404(chapter_id)
-        novel = Novel.query.get_or_404(chapter.novel_id)
-        if not user.is_superuser and novel.user_id != user.id:
-            abort(403)
-    
-    script_folder = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'audio', 'script')
+        # 没有请求上下文（如在后台线程中），跳过权限检查
+        pass
+
+    script_folder = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'audio', 'script', f'novel-{novel.id}')
     script_cache_path = os.path.join(script_folder, f'chapter_{chapter_id}_segment_0_script.json')
     return os.path.exists(script_cache_path)
 
@@ -350,25 +450,38 @@ def generate_chapter_audio(app, chapter_id, user_id, audio_path):
     """
     生成章节音频的核心逻辑
     三线程架构:脚本生成 + 音频生成
-    
+    支持断点续传
+
     Args:
         app: Flask应用实例
         chapter_id: 章节ID
         user_id: 用户ID
         audio_path: 音频文件路径
-    
+
     Note:
         每个任务使用独立的队列和事件对象,避免多任务并发冲突
     """
-    
-     # 清理可能存在的不完整文件
-    if os.path.exists(audio_path):
-        print(f"[清理] 删除旧的不完整文件: {audio_path}")
-        os.remove(audio_path)
+
+    # 尝试加载断点
+    resume_data = _load_resume_point(audio_path)
+    start_segment = 0
+    start_item = 0
+    file_mode = 'wb'  # 默认覆盖写入
+
+    if resume_data:
+        start_segment = resume_data.get('segment_index', 0)
+        start_item = resume_data.get('last_completed_item', -1) + 1  # 从下一个item开始
+        file_mode = 'ab'  # 追加模式
+        print(f"[断点续传] 从 segment={start_segment}, item={start_item} 继续生成")
+    else:
+        # 清理可能存在的不完整文件
+        if os.path.exists(audio_path):
+            print(f"[清理] 删除旧的不完整文件: {audio_path}")
+            os.remove(audio_path)
 
     chapter = Chapter.query.get_or_404(chapter_id)
     novel = Novel.query.get_or_404(chapter.novel_id)
-    
+
     # 标记状态为"生成中"
     chapter.audio_status = 'generating'
     db.session.commit()
@@ -395,10 +508,10 @@ def generate_chapter_audio(app, chapter_id, user_id, audio_path):
         error_container['error'] = str(e)
         # 抛出异常
         raise e
-    
+
     # 分段策略：第一段极短（快速启动），后续段落正常长度
     segments = _split_content_into_segments(chapter_content, max_length=1500)
-    
+
     # 为本次任务创建独立的队列和事件对象
     script_queue = queue.Queue(maxsize=10)  # 配音脚本队列
     complete_event = threading.Event()  # 音频生成完成事件
@@ -418,12 +531,19 @@ def generate_chapter_audio(app, chapter_id, user_id, audio_path):
                 llm_api_key = novel.llm_api_key if novel.llm_api_key else None
                 llm_base_url = novel.llm_base_url if novel.llm_base_url else None
                 llm_model = novel.llm_model if novel.llm_model else None
-                
+
                 for i, segment in enumerate(segments):
+                    # 断点续传：跳过已完成的segments
+                    if i < start_segment:
+                        # print(f"[脚本生成] 跳过已完成的第 {i+1}/{len(segments)} 段")
+                        continue
+
                     # print(f"\n[脚本生成] 正在处理第 {i+1}/{len(segments)} 段（{len(segment)} 字）...")
-                    
+
                     # 检查是否已有保存的脚本
-                    script_folder = os.path.join(app.config['AUDIO_FOLDER'], 'script')
+                    script_folder = os.path.join(app.config['AUDIO_FOLDER'], 'script', f'novel-{novel.id}')
+                    # 如果script_folder不存在则创建
+                    os.makedirs(script_folder, exist_ok=True)
                     script_cache_path = os.path.join(script_folder, f'chapter_{chapter_id}_segment_{i}_script.json')
                     if os.path.exists(script_cache_path):
                         # print(f"[脚本生成] 使用已缓存的脚本: {script_cache_path}")
@@ -449,9 +569,9 @@ def generate_chapter_audio(app, chapter_id, user_id, audio_path):
                                 else:
                                     print(f"[脚本生成] 重试 {max_retries} 次后仍然失败: {str(e)}")
                         
-                        # 如果所有重试都失败，抛出最后的异常
+                        # 如果所有重试都失败，跳过这个segment
                         if voice_script is None:
-                            raise last_error
+                            continue
                         
                         # 确保脚本缓存目录存在
                         if not os.path.exists(script_folder):
@@ -462,20 +582,22 @@ def generate_chapter_audio(app, chapter_id, user_id, audio_path):
                         # print(f"[脚本生成] 脚本已缓存到: {script_cache_path}")
                     
                     # 放入脚本队列，供音频生成线程使用
-                    script_queue.put((i, voice_script))
+                    # 附加segment索引信息，用于断点续传
+                    current_start_item = start_item if i == start_segment else 0
+                    script_queue.put((i, voice_script, current_start_item))
                     # print(f"[脚本生成] 第 {i+1} 段脚本已入队")
-                
+
                     if cancel_event.is_set():
                         print(f"[脚本生成] 收到取消信号, 停止章节 {chapter_id} 的脚本生成")
                         error_container['error'] = error_container.get('error') or 'cancelled'
                         # 通知下游队列,让其他线程尽快退出
-                        script_queue.put(('error', 'cancelled'))
+                        script_queue.put(('error', 'cancelled', 0))
                         return
 
                 # 脚本生成完成标记
-                script_queue.put(('done', None))
+                script_queue.put(('done', None, 0))
                 print("\n[脚本生成] 所有脚本生成完成\n")
-                
+
                 # 检查并预处理下一章
                 check_and_preprocess_next_chapter(chapter_id)
                 script_complete_event.set()
@@ -485,20 +607,22 @@ def generate_chapter_audio(app, chapter_id, user_id, audio_path):
                 # import traceback
                 # traceback.print_exc()
                 error_container['error'] = str(e)
-                script_queue.put(('error', str(e)))
+                script_queue.put(('error', str(e), 0))
     
     # 线程2：调用 EasyVoice/EdgeTTS 生成音频并写入文件
     def audio_producer():
         file_completed = False
+        current_segment_index = start_segment  # 当前处理的segment索引
+
         try:
-            # 打开音频文件进行写入
-            with open(audio_path, 'wb') as f:
+            # 打开音频文件进行写入（追加或覆盖）
+            with open(audio_path, file_mode) as f:
                 while True:
                     if cancel_event.is_set():
                         print(f"[音频生成] 收到取消信号, 停止章节 {chapter_id} 的音频生成")
                         complete_event.set()
                         break
-    
+
                     try:
                         # 从脚本队列获取
                         item = script_queue.get(timeout=180)
@@ -506,11 +630,11 @@ def generate_chapter_audio(app, chapter_id, user_id, audio_path):
                         if item[0] == 'error':
                             print(f"[音频生成] 收到错误信号: {item[1]}")
                             break
-                        
+
                         # 处理完成信号
                         elif item[0] == 'done':
                             print("[音频生成] 收到脚本完成信号，所有音频生成完成")
-                                    
+
                             # 更新数据库
                             try:
                                  with app.app_context():
@@ -520,6 +644,9 @@ def generate_chapter_audio(app, chapter_id, user_id, audio_path):
                                         ch.audio_status = 'complete'
                                         db.session.commit()
                                         print(f"[音频生成] ✅ 文件完整生成并标记完成: {audio_path}\n")
+
+                                        # 删除断点文件
+                                        _delete_resume_file(audio_path)
                                     else:
                                         print(f"[音频生成] 文件生成完成但遇到错误，略过标记: {error_container['error']}")
                             except Exception as e:
@@ -536,72 +663,86 @@ def generate_chapter_audio(app, chapter_id, user_id, audio_path):
                             except Exception as e:
                                  print(f"[生成管理] 清理任务失败: {e}")
                             break
-                        
+
                         # 处理脚本
                         else:
-                            i, voice_script = item
-                            # print(f"\n[音频生成] 正在生成第 {i+1} 段音频...")
-                                
+                            segment_index, voice_script, segment_start_item = item
+                            current_segment_index = segment_index
+                            # print(f"\n[音频生成] 正在生成第 {segment_index+1} 段音频...")
+
+                            # 创建进度回调函数，保存断点
+                            def progress_callback(item_index):
+                                _save_resume_point(audio_path, chapter_id, current_segment_index, item_index)
+
                             # 使用 EdgeTTS 流式生成音频（默认）
                             # 如果需要使用 EasyVoice，设置环境变量 USE_EASYVOICE=1
                             use_easyvoice = os.getenv('USE_EASYVOICE', '0') == '1'
-                            
+
                             if use_easyvoice:
-                                print(f"[音频生成] 使用 EasyVoice 生成第 {i+1} 段")
+                                print(f"[音频生成] 使用 EasyVoice 生成第 {segment_index+1} 段")
                                 client = EasyVoiceClient()
                             else:
-                                # print(f"[音频生成] 使用 EdgeTTS 生成第 {i+1} 段")
+                                # print(f"[音频生成] 使用 EdgeTTS 生成第 {segment_index+1} 段")
                                 client = EdgeTTSClient()
-                            
+
                             try:
-                                # 关键:调用流式生成方法,传入cancel_event
+                                # 关键:调用流式生成方法,传入cancel_event和断点续传参数
                                 # 使用100K缓存
                                 BUFFER_SIZE = 100 * 1024  # 100KB
                                 buffer = bytearray()
-                                                            
+
                                 if use_easyvoice:
                                     # EasyVoice不支持cancel_event参数
-                                    for chunk in client.generate_audio_stream(voice_script):
+                                    for chunk in client.generate_audio_stream(
+                                        voice_script,
+                                        start_item=segment_start_item,
+                                        progress_callback=progress_callback
+                                    ):
                                         buffer.extend(chunk)
-                                                                    
+
                                         # 当缓存达到100K时写入文件
                                         if len(buffer) >= BUFFER_SIZE:
                                             f.write(buffer)
                                             f.flush()
                                             buffer.clear()
-                            
+
                                         if cancel_event.is_set():
                                             break
-                                                                
+
                                     # 写入剩余缓存
                                     if buffer:
                                         f.write(buffer)
                                         f.flush()
                                 else:
                                     # EdgeTTS支持cancel_event参数
-                                    for chunk in client.generate_audio_stream(voice_script, cancel_event):
+                                    for chunk in client.generate_audio_stream(
+                                        voice_script,
+                                        cancel_event=cancel_event,
+                                        start_item=segment_start_item,
+                                        progress_callback=progress_callback
+                                    ):
                                         buffer.extend(chunk)
-                                                                    
+
                                         # 当缓存达到100K时写入文件
                                         if len(buffer) >= BUFFER_SIZE:
                                             f.write(buffer)
                                             f.flush()
                                             buffer.clear()
-                                                                
+
                                     # 写入剩余缓存
                                     if buffer:
                                         f.write(buffer)
                                         f.flush()
-                                    
-                                # print(f"[音频生成] 第 {i+1} 段生成并写入完成")
-                                    
+
+                                # print(f"[音频生成] 第 {segment_index+1} 段生成并写入完成")
+
                             except Exception as e:
-                                print(f"[音频生成] 第 {i+1} 段生成失败: {e}")
+                                print(f"[音频生成] 第 {segment_index+1} 段生成失败: {e}")
                                 import traceback
                                 traceback.print_exc()
                                 error_container['error'] = str(e)
                                 continue # ！！一般是脚本有错误，目前只是简单地先跳过这一段
-                        
+
                     except queue.Empty:
                         if script_complete_event.is_set():
                             print("[音频生成] 脚本队列已空且生成完成")
@@ -609,27 +750,23 @@ def generate_chapter_audio(app, chapter_id, user_id, audio_path):
                         else:
                             print("[音频生成] 等待脚本生成...")
                             continue
-            
+
         except Exception as e:
             print(f"\n[音频生成] 发生错误: {e}")
             import traceback
             traceback.print_exc()
             error_container['error'] = str(e)
-    
-            # 通知生成管理器任务结束
-            try:
-                _generation_manager.clear_task(user_id, chapter_id)
-            except Exception as e2:
-                print(f"[生成管理] 清理任务失败: {e2}")
-            
-        # 如果文件未完成且存在，删除它
+
+        # 通知生成管理器任务结束
+        try:
+            _generation_manager.clear_task(user_id, chapter_id)
+        except Exception as e2:
+            print(f"[生成管理] 清理任务失败: {e2}")
+
+        # 如果文件未完成，保留断点文件（不删除音频文件）
         if not file_completed:
-            try:
-                os.remove(audio_path)
-                print(f"[音频生成] ❌ 删除未完成的音频文件: {audio_path}")
-            except Exception as e:
-                print(f"[音频生成] 删除未完成文件失败: {e}")
-            
+            print(f"[音频生成] ⚠️  音频生成未完成，断点已保存: {_get_resume_file_path(audio_path)}")
+
             # 标记失败
             try:
                 with app.app_context():

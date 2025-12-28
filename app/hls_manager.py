@@ -424,7 +424,7 @@ def stream_chapter_hls(app, chapter_id, timestamp):
     
     # 情况3: MP3正在生成，继续转换
     if check_chapter_generating(g.current_user.id, chapter_id) and os.path.exists(mp3_path):
-        # print(f"[HLS转换] MP3正在生成(大小:{file_size}),尝试转换现有部分")
+        print(f"[HLS转换] MP3正在生成,尝试转换现有部分")
         result = hls_manager.convert_mp3_to_hls(mp3_path, timestamp, is_generating=True)
         if result:
             return send_from_directory(

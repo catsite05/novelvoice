@@ -13,11 +13,11 @@ class EdgeTTSClient:
         """
         pass
     
-    def generate_audio_stream(self, voice_script: list, cancel_event=None):
+    def generate_audio_stream(self, voice_script: list, cancel_event=None, start_item=0, progress_callback=None):
         """
         调用Edge TTS API流式生成音频（生成器模式）
         逐段落生成音频并流式返回
-        
+
         Args:
             voice_script (list): 配音脚本内容，每个元素包含：
                 - desc: 角色描述
@@ -27,7 +27,9 @@ class EdgeTTSClient:
                 - pitch: 音调（可选）
                 - volume: 音量（可选）
             cancel_event: threading.Event 对象，用于取消生成
-                
+            start_item: 从第几个item开始生成（用于断点续传）
+            progress_callback: 进度回调函数，参数为(item_index)，每完成一个item调用一次
+
         Yields:
             bytes: 音频数据块
         """
@@ -39,22 +41,30 @@ class EdgeTTSClient:
         async def generate_all_segments():
             """异步生成所有段落的音频"""
             for i, segment in enumerate(voice_script):
+                # 跳过已完成的items（断点续传）
+                if i < start_item:
+                    # print(f"[EdgeTTS] 跳过已完成的第 {i+1}/{len(voice_script)} 段")
+                    continue
+
                 # 检查取消信号
                 if cancel_event and cancel_event.is_set():
                     print(f"[EdgeTTS] 收到取消信号，停止生成")
                     return
-                    
+
                 # print(f"\n[EdgeTTS] 正在处理第 {i+1}/{len(voice_script)} 段...")
-                
+
                 text = segment.get('text', '')
                 voice = segment.get('voice', 'zh-CN-YunjianNeural')
                 rate = segment.get('rate', '+0%')
                 pitch = segment.get('pitch', '+0Hz')
                 volume = segment.get('volume', '+0%')
-                
+
                 # 如果文本为空，跳过
                 if not text or not text.strip():
                     print(f"[EdgeTTS] 第 {i+1} 段文本为空，跳过")
+                    # 即使跳过也要通知回调
+                    if progress_callback:
+                        progress_callback(i)
                     continue
                 
                 # print(f"[EdgeTTS] 生成音频: voice={voice}, rate={rate}, pitch={pitch}, volume={volume}")
@@ -86,11 +96,15 @@ class EdgeTTSClient:
                                 return
                         
                         # print(f"[EdgeTTS] 第 {i+1} 段生成完成，共 {chunk_count} 个数据块")
-                        
+
+                        # 通知进度回调
+                        if progress_callback:
+                            progress_callback(i)
+
                         # 成功后添加短暂延迟，避免请求过快
                         # if i < len(voice_script) - 1:
                         #     await asyncio.sleep(0.5)
-                        
+
                         break  # 成功则跳出重试循环
                         
                     except Exception as e:
@@ -110,7 +124,7 @@ class EdgeTTSClient:
                                 print(f"[EdgeTTS]   2. 或设置环境变量 USE_EASYVOICE=1 切换到EasyVoice")
                                 raise
                         else:
-                            print(f"[EdgeTTS] 第 {i+1} 段生成失败: {error_msg}")
+                            print(f"[EdgeTTS] ❌ 第 {i+1} 段生成失败: {error_msg}")
                             raise
             
             # print(f"\n[EdgeTTS] 所有段落生成完成\n")
@@ -164,9 +178,9 @@ class EdgeTTSClient:
             # 生成器被外部关闭，正常退出
             print(f"[EdgeTTS] 流式生成被取消")
         except Exception as e:
-            print(f"\n❌ [EdgeTTS] 流式生成失败: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            # print(f"\n❌ [EdgeTTS] 流式生成失败: {str(e)}")
+            # import traceback
+            # traceback.print_exc()
             raise
     
     def generate_audio(self, voice_script: list, output_path: str) -> bool:

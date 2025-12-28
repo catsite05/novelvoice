@@ -16,26 +16,33 @@ class EasyVoiceClient:
         """
         self.base_url = base_url or os.getenv('EASYVOICE_BASE_URL', 'http://localhost:3000')
     
-    def generate_audio_stream(self, voice_script: list):
+    def generate_audio_stream(self, voice_script: list, start_item=0, progress_callback=None):
         """
         调用EasyVoice API流式生成音频（生成器模式）
-        
+
         Args:
             voice_script (list): 配音脚本内容
-            
+            start_item: 从第几个item开始生成（用于断点续传）
+            progress_callback: 进度回调函数，参数为(item_index)，每完成一个item调用一次
+
         Yields:
             bytes: 音频数据块
         """
+        # 如果需要断点续传，截取voice_script
+        if start_item > 0:
+            print(f"[EasyVoice] 断点续传：从第 {start_item + 1} 段开始")
+            voice_script = voice_script[start_item:]
+
         # 构建API端点URL
         url = f"{self.base_url}/api/v1/tts/generateJson"
-        
+
         # 构建请求数据
         data = {"data": voice_script}
         headers = {'Content-Type': 'application/json'}
-        
+
         print(f"\n[EasyVoice] 开始流式调用: {url}")
         print(f"[EasyVoice] 脚本段落数: {len(voice_script)}")
-        
+
         try:
             # 关键：stream=True 启用流式响应
             response = requests.post(
@@ -46,9 +53,9 @@ class EasyVoiceClient:
                 timeout=120
             )
             response.raise_for_status()
-            
+
             print(f"[EasyVoice] 开始接收流式数据...")
-            
+
             # 逐块读取并立即 yield
             chunk_count = 0
             total_size = 0
@@ -59,9 +66,15 @@ class EasyVoiceClient:
                     yield chunk
                     # if chunk_count % 10 == 0:
                     #     print(f"[EasyVoice] 已接收 {chunk_count} 个块，共 {total_size} 字节")
-            
+
             print(f"[EasyVoice] 流式传输完成，总计 {total_size} 字节\n")
-            
+
+            # 注意：EasyVoice批量生成无法逐个item回调进度
+            # 完成后统一调用一次回调（通知所有items已完成）
+            if progress_callback:
+                for i in range(len(voice_script)):
+                    progress_callback(start_item + i)
+
         except requests.exceptions.RequestException as e:
             print(f"\n❌ [EasyVoice] 流式调用失败: {str(e)}")
             raise

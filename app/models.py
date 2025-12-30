@@ -57,3 +57,19 @@ class Character(db.Model):
     
     def __repr__(self):
         return f'<Character {self.name}>'
+
+
+class AudioProgress(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    novel_id = db.Column(db.Integer, db.ForeignKey('novel.id'), nullable=False)
+    chapter_id = db.Column(db.Integer, db.ForeignKey('chapter.id'), nullable=False)
+    position = db.Column(db.Float, nullable=False, default=0.0)  # 播放位置（秒）
+    updated_at = db.Column(db.DateTime, nullable=False)
+    
+    user = db.relationship('User', backref=db.backref('audio_progress', lazy=True))
+    novel = db.relationship('Novel', backref=db.backref('audio_progress', lazy=True))
+    chapter = db.relationship('Chapter', backref=db.backref('audio_progress', lazy=True))
+    
+    def __repr__(self):
+        return f'<AudioProgress user={self.user_id} novel={self.novel_id} chapter={self.chapter_id} position={self.position}>'

@@ -37,6 +37,9 @@ class GlobalAudioPlayer {
         this.currentState.useHLS = this._shouldUseHLS();
         this.currentState.isIOS = this._isIOS();
         
+        // 播放进度保存定时器
+        this.audioProgressTimer = null;
+        
         // 【调试面板】用于在iPhone上显示调试信息
         this._initDebugPanel();
         
@@ -136,23 +139,35 @@ class GlobalAudioPlayer {
     }
     
     // 播放指定章节
-    playChapter(novelId, novelTitle, chapterId, chapterTitle, chapters = []) {
+    playChapter(novelId, novelTitle = '', chapterId, chapterTitle = '', chapters = [], position = 0) {
         console.log(`[GlobalPlayer] playChapter 被调用`);
         console.log(`  当前章节ID: ${this.currentState.chapterId}`);
         console.log(`  请求章节ID: ${chapterId}`);
         console.log(`  ID类型: 当前=${typeof this.currentState.chapterId}, 请求=${typeof chapterId}`);
+        console.log(`  恢复位置: ${position}秒`);
         
         // 清除关闭标志（开始新的播放）
         this._isClosed = false;
         
         // 关键优化：如果是同一章节，不重新设置 src
-        /*
         if (this.currentState.chapterId == chapterId) {
             console.log('✅ 已经在播放该章节，继续播放（不重新加载）');
             
             // 只更新 UI 和显示播放器
             this.show();
-            this.updateUI();
+            
+            this.currentState.offset = 0;
+            // 如果需要恢复播放位置
+            if (position > 0) {
+                
+                this._pendingSeekTime = position;
+                this._log(`恢复播放位置: ${position.toFixed(1)}秒`);
+                
+                if (this.audio.readyState >= 1) {
+                    this.audio.currentTime = position;
+                    this._pendingSeekTime = 0;
+                }
+            }
             
             // 如果暂停了就播放
             if (this.audio.paused) {
@@ -166,7 +181,6 @@ class GlobalAudioPlayer {
         }
         
         console.log('⚠️ 检测到章节切换，需要重新加载音频');
-        */
        
         // 保存旧的章节 ID（用于判断是否需要中止旧请求）
         const oldChapterId = this.currentState.chapterId;
@@ -178,7 +192,13 @@ class GlobalAudioPlayer {
         this.currentState.chapterTitle = chapterTitle;
         this.currentState.chapters = chapters;
         this.currentState.offset = 0;
-        this.currentState.currentTime = 0;
+        this.currentState.currentTime = position;
+        
+        // 如果需要恢复播放位置，设置待恢复时间
+        if (position > 0) {
+            this._pendingSeekTime = position;
+            this._log(`设置待恢复位置: ${position.toFixed(1)}秒`);
+        }
         
         // 显示播放器和加载状态
         this.show();
@@ -192,15 +212,25 @@ class GlobalAudioPlayer {
         
         // 检测是否支持HLS
         const useHLS = this._shouldUseHLS();
+        const isIOS = this._isIOS();
         
         // 先清理缓存再启动播放
         fetch(`/hls/clear`)
             .then(() => {
                 if (useHLS) {
                     // 使用HLS
-                    const hlsUrl = `/hls/${chapterId}/stream`;
-                    console.log(`切换到章节 ${chapterId}，使用HLS: ${hlsUrl}`);
-                    this._loadHLS(hlsUrl);
+                    if(isIOS) {
+                        const hlsUrl = `/hls/${chapterId}/stream`;
+                        console.log(`切换到章节 ${chapterId}，使用HLS: ${hlsUrl}`);
+                        this._loadHLS(hlsUrl);
+                    }
+                    else {
+                        this.currentState.offset += position || 0;
+                        const hlsUrl = `/hls/${chapterId}/stream?ts=${this.currentState.offset}`;
+                        console.log(`切换到章节 ${chapterId}，使用HLS: ${hlsUrl}`);
+                        this._loadHLS(hlsUrl);
+                    }
+                    
                 } else {
                     // 使用传统流式播放
                     const streamUrl = `/stream/${chapterId}`;
@@ -213,6 +243,9 @@ class GlobalAudioPlayer {
                 
                 // 保存状态
                 this.saveState();
+                
+                // 启动播放进度定时保存（每分钟更新一次）
+                this._startAudioProgressTimer();
             })
             .catch(err => {
                 console.error('[HLS] 缓存清理失败:', err);
@@ -439,6 +472,9 @@ class GlobalAudioPlayer {
         // 标记为主动关闭状态，阻止错误重连
         this._isClosed = true;
 
+        // 停止播放进度定时器
+        this._stopAudioProgressTimer();
+
         this.pause();
         
         // 销毁HLS实例，停止所有加载
@@ -540,6 +576,9 @@ class GlobalAudioPlayer {
     onPause() {
         this.currentState.isPlaying = false;
         this.updatePlayPauseButton();
+        
+        // 暂停时立即保存播放进度
+        this._saveAudioProgress();
     }
     
     onEnded() {
@@ -633,6 +672,24 @@ class GlobalAudioPlayer {
                 this.currentState = JSON.parse(saved);
                 this._log(`加载状态: chId=${this.currentState.chapterId}, time=${this.currentState.currentTime?.toFixed(1)}s`);
                 
+                // 从服务器获取播放进度（优先级高于localStorage）
+                if (this.currentState.novelId) {
+                    try {
+                        const response = await fetch(`/novels/${this.currentState.novelId}/audio-progress`);
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.has_progress) {
+                                this._log(`从服务器加载播放进度: chId=${data.chapter_id}, time=${data.position.toFixed(1)}s`);
+                                this.currentState.chapterId = data.chapter_id;
+                                this.currentState.currentTime = data.position;
+                                this._pendingSeekTime = data.position;
+                            }
+                        }
+                    } catch (err) {
+                        console.error('加载服务器播放进度失败:', err);
+                    }
+                }
+                
                 // 恢复音频源
                 if (this.currentState.chapterId) {
                     // 标记需要恢复的播放位置
@@ -644,13 +701,13 @@ class GlobalAudioPlayer {
                     const isIOS = this._isIOS();
 
                     if (useHLS) {
-                        // 尝试使用HLS播放，URL中添加保存的时间
-                        this.currentState.offset += this.currentState.currentTime || 0;
                         if(isIOS) {
                             const hlsUrl = `/hls/${this.currentState.chapterId}/stream`; // IOS可以自动跳转到断点位置
                             this._loadHLS(hlsUrl);
                         }
                         else {
+                            // 尝试使用HLS播放，URL中添加保存的时间
+                            this.currentState.offset += this.currentState.currentTime || 0;
                             const hlsUrl = `/hls/${this.currentState.chapterId}/stream?ts=${this.currentState.offset}`;
                             // 首先清除HLS缓存，缓存清除完成后再尝试使用HLS播放
                             fetch(`/hls/clear`)
@@ -717,11 +774,15 @@ class GlobalAudioPlayer {
         window.addEventListener('beforeunload', () => {
             console.log('[站内跳转] beforeunload 触发，保存播放状态');
             this.saveStateSync();
+            // 保存播放进度到服务器
+            this._saveAudioProgress();
         });
         
         window.addEventListener('pagehide', () => {
             console.log('[站内跳转] pagehide 触发，保存播放状态');
             this.saveStateSync();
+            // 保存播放进度到服务器
+            this._saveAudioProgress();
         });
     }
     
@@ -872,6 +933,60 @@ class GlobalAudioPlayer {
         `;
     }
     
+    // 启动播放进度定时保存（每分钟更新一次）
+    _startAudioProgressTimer() {
+        this._stopAudioProgressTimer();
+        
+        // 立即保存一次
+        this._saveAudioProgress();
+        
+        // 每60秒保存一次
+        this.audioProgressTimer = setInterval(() => {
+            this._saveAudioProgress();
+        }, 60000);
+        
+        this._log('启动播放进度定时器（每60秒保存一次）');
+    }
+    
+    // 停止播放进度定时保存
+    _stopAudioProgressTimer() {
+        if (this.audioProgressTimer) {
+            clearInterval(this.audioProgressTimer);
+            this.audioProgressTimer = null;
+            this._log('停止播放进度定时器');
+        }
+    }
+    
+    // 保存播放进度到服务器
+    async _saveAudioProgress() {
+        if (!this.currentState.novelId || !this.currentState.chapterId) {
+            return;
+        }
+        
+        const currentTime = this.audio.currentTime || 0;
+        
+        try {
+            const response = await fetch(`/novels/${this.currentState.novelId}/audio-progress`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    chapter_id: this.currentState.chapterId,
+                    position: currentTime
+                })
+            });
+            
+            if (response.ok) {
+                this._log(`播放进度已保存: chId=${this.currentState.chapterId}, time=${currentTime.toFixed(1)}s`);
+            } else {
+                console.error('保存播放进度失败:', response.status);
+            }
+        } catch (err) {
+            console.error('保存播放进度请求失败:', err);
+        }
+    }
+    
     // 【调试面板】添加日志
     _log(msg) {
         console.log('[Player] ' + msg);
@@ -896,8 +1011,8 @@ class GlobalAudioPlayer {
 window.globalPlayer = new GlobalAudioPlayer();
 
 // 暂露全局方法供页面调用
-window.playAudiobook = function(novelId, novelTitle, chapterId, chapterTitle, chapters = []) {
-    window.globalPlayer.playChapter(novelId, novelTitle, chapterId, chapterTitle, chapters);
+window.playAudiobook = function(novelId, novelTitle, chapterId, chapterTitle, chapters = [], position = 0) {
+    window.globalPlayer.playChapter(novelId, novelTitle, chapterId, chapterTitle, chapters, position);
 };
 
 // 暗号：URL加 ?debug=1 打开调试面板

@@ -465,6 +465,104 @@ def get_novel_llm_config(novel_id):
     })
 
 
+@app.route('/novels/<int:novel_id>/audio-progress', methods=['PUT'])
+@login_required
+def update_audio_progress(novel_id):
+    """更新音频播放进度（包含章节内的播放位置）"""
+    from datetime import datetime, timezone
+    from models import AudioProgress, Novel
+    
+    data = request.get_json(silent=True) or {}
+    chapter_id = data.get('chapter_id')
+    position = data.get('position', 0.0)
+    
+    if not chapter_id:
+        return jsonify({"error": "Missing chapter_id"}), 400
+    
+    try:
+        chapter_id = int(chapter_id)
+        position = float(position)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid parameter values"}), 400
+    
+    # 获取小说并检查权限
+    novel = Novel.query.get_or_404(novel_id)
+    if not g.current_user.is_superuser and novel.user_id != g.current_user.id:
+        return jsonify({"error": "无权限"}), 403
+    
+    # 查找或创建播放进度记录
+    progress = AudioProgress.query.filter_by(
+        user_id=g.current_user.id,
+        novel_id=novel_id
+    ).first()
+    
+    if progress:
+        # 更新现有记录
+        progress.chapter_id = chapter_id
+        progress.position = position
+        progress.updated_at = datetime.now(timezone.utc)
+    else:
+        # 创建新记录
+        progress = AudioProgress(
+            user_id=g.current_user.id,
+            novel_id=novel_id,
+            chapter_id=chapter_id,
+            position=position,
+            updated_at=datetime.now(timezone.utc)
+        )
+        db.session.add(progress)
+    
+    db.session.commit()
+    
+    return jsonify({"success": True})
+
+
+@app.route('/novels/<int:novel_id>/audio-progress', methods=['GET'])
+@login_required
+def get_audio_progress(novel_id):
+    """获取音频播放进度"""
+    from models import Novel, Chapter, AudioProgress
+    
+    novel = Novel.query.get_or_404(novel_id)
+    if not g.current_user.is_superuser and novel.user_id != g.current_user.id:
+        return jsonify({"error": "无权限"}), 403
+    
+    # 查找播放进度记录
+    progress = AudioProgress.query.filter_by(
+        user_id=g.current_user.id,
+        novel_id=novel_id
+    ).first()
+    
+    if progress:
+        chapter = db.session.get(Chapter, progress.chapter_id)
+        if chapter:
+            return jsonify({
+                "chapter_id": progress.chapter_id,
+                "position": progress.position,
+                "has_progress": True
+            })
+        else:
+            # 章节已被删除，返回第一章
+            first_chapter = Chapter.query.filter_by(novel_id=novel_id).order_by(Chapter.start_position).first()
+            if first_chapter:
+                return jsonify({
+                    "chapter_id": first_chapter.id,
+                    "position": 0.0,
+                    "has_progress": False
+                })
+    
+    # 没有播放进度，返回第一章
+    first_chapter = Chapter.query.filter_by(novel_id=novel_id).order_by(Chapter.start_position).first()
+    if first_chapter:
+        return jsonify({
+            "chapter_id": first_chapter.id,
+            "position": 0.0,
+            "has_progress": False
+        })
+    
+    return jsonify({"error": "该小说暂无章节"}), 404
+
+
 @app.route('/novels/<int:novel_id>/llm-config', methods=['POST'])
 @login_required
 def update_novel_llm_config(novel_id):

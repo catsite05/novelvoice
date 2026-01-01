@@ -93,6 +93,7 @@
             border-radius: 10px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             transition: all 0.3s ease;
+            position: relative;
         }
         
         .chapter-item:hover {
@@ -101,11 +102,51 @@
             transform: translateX(5px);
         }
         
+        /* 章节删除按钮 */
+        .chapter-delete-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            width: 36px;
+            height: 36px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 12px rgba(244, 67, 54, 0.3);
+            opacity: 0;
+            transform: translateX(10px);
+        }
+        
+        .chapter-item:hover .chapter-delete-btn {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        
+        .chapter-delete-btn:hover {
+            transform: translateY(-2px) scale(1.05);
+            box-shadow: 0 8px 25px rgba(244, 67, 54, 0.4);
+        }
+        
+        .chapter-delete-btn:active {
+            transform: translateY(0) scale(0.95);
+        }
+        
+        .chapter-delete-btn i {
+            font-size: 14px;
+        }
+        
         .chapter-title {
             font-size: 18px;
             font-weight: bold;
             margin-bottom: 5px;
             color: #333;
+            padding-right: 50px;
         }
         
         .chapter-number {
@@ -185,6 +226,9 @@
                         chapterDiv.innerHTML = `
                             <div class="chapter-number">第${index + 1}章</div>
                             <div class="chapter-title">${chapter.title}</div>
+                            <button class="chapter-delete-btn" onclick="deleteChapter(event, ${chapter.id}, '${chapter.title}')" title="删除章节">
+                                <i class="fas fa-trash"></i>
+                            </button>
                         `;
                         chapterDiv.onclick = () => {
                             window.location.href = `/reader?novel_id=${novelId}&chapter_id=${chapter.id}`;
@@ -199,5 +243,31 @@
                 console.error('Error fetching chapters:', error);
                 document.getElementById('chapterList').innerHTML = '<div class="empty-message">加载章节列表失败。</div>';
             });
+        
+        // Delete chapter function
+        function deleteChapter(event, chapterId, chapterTitle) {
+            event.stopPropagation(); // Prevent the click from bubbling to the parent div
+            
+            // Confirm deletion
+            if (confirm(`确定要删除章节《${chapterTitle}》吗？此操作不可恢复！`)) {
+                fetch(`/chapters/${chapterId}`, {
+                    method: 'DELETE'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('章节删除成功！');
+                        // Reload the page to reflect changes
+                        location.reload();
+                    } else {
+                        alert(`删除失败: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error deleting chapter:', error);
+                    alert('删除章节时发生错误！');
+                });
+            }
+        }
     </script>
 {% endblock %}

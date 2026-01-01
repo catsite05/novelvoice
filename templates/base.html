@@ -7,6 +7,11 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>{% block title %}NovelVoice - 智能有声书{% endblock %}</title>
     
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="/static/icon-96.png" type="image/png">
+    <link rel="apple-touch-icon" href="/static/icon-96.png">
+    <link rel="shortcut icon" href="/static/favicon.ico">
+    
     <style>
         * {
             margin: 0;
@@ -238,6 +243,8 @@
     </div>
     
     <!-- 全局播放器脚本 -->
+    <!-- Font Awesome 图标库 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- HLS.js库 (用于非iOS浏览器的HLS支持) -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <script src="/static/js/global-player.js?v=3.2"></script>

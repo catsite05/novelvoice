@@ -78,3 +78,4 @@ wheels/
 .qoder/
 
 test.sh
+claude_code.sh

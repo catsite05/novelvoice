@@ -18,106 +18,118 @@
         }
         
         .container {
-            background: transparent; /* 透明，继承body的背景色 */
+            background: transparent;
             border-radius: 0;
             box-shadow: none;
             padding: 20px;
             max-width: 100%;
             margin: 0;
             min-height: 100vh;
+            padding-top: 60px;
+            padding-bottom: 80px;
         }
 
-        
-        .header {
+        /* 顶部悬浮面板 */
+        .top-panel {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: linear-gradient(180deg, rgba(249, 246, 240, 0.98) 0%, rgba(249, 246, 240, 0.9) 100%);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 1px solid #ddd;
-            flex-wrap: wrap;
+            padding: 0 20px;
+            z-index: 3000;
+            transform: translateY(-100%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
         
-        .header-left {
+        .top-panel.visible {
+            transform: translateY(0);
+        }
+        
+        /* 底部悬浮面板 */
+        .bottom-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 70px;
+            background: linear-gradient(0deg, rgba(249, 246, 240, 0.98) 0%, rgba(249, 246, 240, 0.9) 100%);
             display: flex;
+            justify-content: space-around;
             align-items: center;
-            gap: 15px;
+            padding: 0 10px;
+            z-index: 10000;
+            transform: translateY(100%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
         }
         
-        .nav-links {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            align-items: center;
+        .bottom-panel.visible {
+            transform: translateY(0);
         }
         
-        .nav-links a {
+        /* 面板按钮样式 */
+        .panel-btn {
+            background: none;
+            border: none;
             color: #667eea;
-            text-decoration: none;
-            padding: 8px 16px;
-            border-radius: 20px;
-            transition: all 0.3s ease;
-            white-space: nowrap;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            min-width: 60px;
         }
         
-        .nav-links a.disabled {
-            background: #ccc;
-            color: #666;
+        .panel-btn i {
+            font-size: 20px;
+        }
+        
+        .panel-btn span {
+            font-size: 12px;
+        }
+        
+        .panel-btn:hover {
+            background: rgba(102, 126, 234, 0.1);
+        }
+        
+        .panel-btn:active {
+            transform: scale(0.95);
+        }
+        
+        .panel-btn.disabled {
+            color: #ccc;
             cursor: not-allowed;
             pointer-events: none;
         }
         
-        .nav-links a:hover {
-            background: rgba(102, 126, 234, 0.1);
+        /* 顶部面板按钮特殊样式 */
+        .top-panel .panel-btn {
+            flex-direction: row;
+            gap: 8px;
+            min-width: auto;
         }
         
-        .back-link {
-            color: #667eea;
-            text-decoration: none;
-            padding: 8px 15px;
-            border-radius: 20px;
-            transition: all 0.3s ease;
+        .top-panel .panel-btn i {
+            font-size: 22px;
         }
         
-        .back-link:hover {
-            background: rgba(102, 126, 234, 0.1);
-            text-decoration: none;
+        .top-panel .panel-btn span {
+            font-size: 14px;
         }
         
-        #novelTitle {
-            font-weight: bold;
-            color: #333;
-        }
-        
-        .navigation {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #eee;
-        }
-        
-        .nav-button {
-            padding: 12px 25px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            text-decoration: none;
-            border-radius: 25px;
-            transition: all 0.3s ease;
-            border: none;
-            cursor: pointer;
-        }
-        
-        .nav-button:hover:not(.disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
-        }
-        
-        .nav-button.disabled {
-            background: #ccc;
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
+        .header {
+            display: none;
         }
         
         .chapter-title {
@@ -152,46 +164,127 @@
             font-size: 1.1em;
         }
         
-        /* 字体大小控制按钮 */
-        .font-size-control {
+        /* 章节选择面板 */
+        .chapter-panel {
             position: fixed;
-            right: 20px;
-            bottom: 100px;
+            right: -320px;
+            top: 0;
+            width: 320px;
+            height: 100vh;
+            background: white;
+            box-shadow: -2px 0 15px rgba(0, 0, 0, 0.15);
+            z-index: 2000;
+            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             display: flex;
             flex-direction: column;
-            gap: 10px;
-            z-index: 1000;
-            opacity: 1;
-            transition: opacity 0.3s ease, transform 0.3s ease;
-            transform: translateX(0);
         }
         
-        /* 隐藏状态 */
-        .font-size-control.hidden {
-            opacity: 0;
-            transform: translateX(100px);
-            pointer-events: none;
+        .chapter-panel.open {
+            right: 0;
         }
         
-        .font-size-btn {
-            width: 45px;
-            height: 45px;
-            border-radius: 50%;
+        .chapter-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            border-bottom: 1px solid #eee;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            border: none;
-            font-size: 20px;
+        }
+        
+        .chapter-panel-title {
+            font-size: 18px;
             font-weight: bold;
+        }
+        
+        .chapter-panel-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 28px;
             cursor: pointer;
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-            transition: all 0.3s ease;
+            width: 32px;
+            height: 32px;
             display: flex;
             align-items: center;
             justify-content: center;
+            border-radius: 50%;
+            transition: background 0.3s ease;
         }
         
-        .font-size-btn:active {
-            transform: scale(0.95);
+        .chapter-panel-close:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .chapter-panel-search {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .chapter-panel-search input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            border-radius: 25px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s ease;
+        }
+        
+        .chapter-panel-search input:focus {
+            border-color: #667eea;
+        }
+        
+        .chapter-panel-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px 0;
+        }
+        
+        .chapter-item {
+            padding: 15px 20px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+            border-bottom: 1px solid #f5f5f5;
+        }
+        
+        .chapter-item:hover {
+            background: #f8f8f8;
+        }
+        
+        .chapter-item.active {
+            background: rgba(102, 126, 234, 0.1);
+            border-left: 3px solid #667eea;
+        }
+        
+        .chapter-item-title {
+            font-size: 15px;
+            color: #333;
+            line-height: 1.5;
+        }
+        
+        .chapter-item.active .chapter-item-title {
+            color: #667eea;
+            font-weight: 500;
+        }
+        
+        .chapter-panel-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1999;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        
+        .chapter-panel-overlay.open {
+            opacity: 1;
+            visibility: visible;
         }
         
         @media (max-width: 600px) {
@@ -241,10 +334,9 @@
                 bottom: 90px;
             }
             
-            .font-size-btn {
-                width: 40px;
-                height: 40px;
-                font-size: 18px;
+            .chapter-panel {
+                width: 100%;
+                right: -100%;
             }
         }
     </style>
@@ -252,34 +344,63 @@
 
 {% block content %}
     <div class="container">
-        <div class="header">
-            <div class="header-left">
-                <a href="/novels/list" class="back-link">&larr; 小说列表</a>
-            </div>
-            <div class="nav-links">
-                <a href="/">🏠 首页</a>
-                <a href="#" id="audiobookLink">🎵 有声书</a>
-            </div>
-        </div>
-    
     <div class="chapter-title" id="chapterTitle">加载中...</div>
     
     <div class="chapter-content" id="chapterContent">
         <div class="loading">正在加载章节内容...</div>
     </div>
-    
-    <div class="navigation">
-        <a href="#" id="prevChapter" class="nav-button disabled">上一章</a>
-        <a href="#" id="tocLink" class="nav-button">目录</a>
-        <a href="#" id="nextChapter" class="nav-button">下一章</a>
     </div>
     
-    <!-- 字体大小控制 -->
-    <div class="font-size-control">
-        <button class="font-size-btn" id="fontIncrease" title="增大字体">A+</button>
-        <button class="font-size-btn" id="fontDecrease" title="减小字体">A-</button>
-        <button class="font-size-btn" id="fontScrollBottom" title="滚动到底部">↓</button>
+    <!-- 顶部悬浮面板 -->
+    <div class="top-panel" id="topPanel">
+        <button class="panel-btn" id="backBtn" title="返回小说列表">
+            <i class="fas fa-arrow-left"></i>
+        </button>
+        <button class="panel-btn" id="audiobookBtn" title="有声书">
+            <i class="fas fa-headphones"></i>
+        </button>
     </div>
+    
+    <!-- 底部悬浮面板 -->
+    <div class="bottom-panel" id="bottomPanel">
+        <button class="panel-btn" id="prevChapterBtn" title="上一章">
+            <i class="fas fa-chevron-left"></i>
+            <span>上一章</span>
+        </button>
+        <button class="panel-btn" id="tocBtn" title="章节目录">
+            <i class="fas fa-list"></i>
+            <span>目录</span>
+        </button>
+        <button class="panel-btn" id="fontDecreaseBtn" title="减小字体">
+            <i class="fas fa-font"></i>
+            <span>A-</span>
+        </button>
+        <button class="panel-btn" id="fontIncreaseBtn" title="增大字体">
+            <i class="fas fa-font"></i>
+            <span>A+</span>
+        </button>
+        <button class="panel-btn" id="nextChapterBtn" title="下一章">
+            <span>下一章</span>
+            <i class="fas fa-chevron-right"></i>
+        </button>
+    </div>
+    
+    <!-- 章节选择面板 -->
+    <div class="chapter-panel" id="chapterPanel">
+        <div class="chapter-panel-header">
+            <span class="chapter-panel-title">章节目录</span>
+            <button class="chapter-panel-close" id="closeChapterPanel">&times;</button>
+        </div>
+        <div class="chapter-panel-search">
+            <input type="text" id="chapterSearch" placeholder="搜索章节..." />
+        </div>
+        <div class="chapter-panel-content" id="chapterList">
+            <div class="loading">加载中...</div>
+        </div>
+    </div>
+    
+    <!-- 章节选择面板遮罩 -->
+    <div class="chapter-panel-overlay" id="chapterPanelOverlay"></div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -333,7 +454,7 @@
             console.log('Sending request with novelId:', novelId, 'chapterId:', chapterId);
             
             // Fetch chapter content from the novel file
-            const url = `/chapter-content?novel_id=${novelId}&chapter_id=${chapterId}`;
+            const url = `/chapters/${chapterId}/content?novel_id=${novelId}`;
             console.log('Request URL:', url);
             
             fetch(url)
@@ -363,21 +484,12 @@
         
         // Update navigation buttons
         function updateNavigation() {
-            const prevButton = document.getElementById('prevChapter');
-            const nextButton = document.getElementById('nextChapter');
-            const tocLink = document.getElementById('tocLink');
-            const audiobookLink = document.getElementById('audiobookLink');
-            
-            // Set up table of contents link
-            tocLink.href = `/toc?novel_id=${novelId}`;
-            
-            // Set up audiobook link with current chapter
-            audiobookLink.href = `/player?novel_id=${novelId}&chapter_id=${chapterId}`;
+            const prevButton = document.getElementById('prevChapterBtn');
+            const nextButton = document.getElementById('nextChapterBtn');
+            const audiobookBtn = document.getElementById('audiobookBtn');
             
             // Previous chapter
             if (currentChapterIndex > 0) {
-                const prevChapterId = chaptersData[currentChapterIndex - 1].id;
-                prevButton.href = `/reader?novel_id=${novelId}&chapter_id=${prevChapterId}`;
                 prevButton.classList.remove('disabled');
             } else {
                 prevButton.classList.add('disabled');
@@ -385,8 +497,7 @@
             
             // Next chapter
             if (currentChapterIndex < chaptersData.length - 1) {
-                const nextChapterId = chaptersData[currentChapterIndex + 1].id;
-                nextButton.href = `/reader?novel_id=${novelId}&chapter_id=${nextChapterId}`;
+                nextButton.classList.remove('disabled');
             } else {
                 nextButton.classList.add('disabled');
             }
@@ -394,55 +505,176 @@
             // 检查并预处理当前章节的配音脚本
             initAudiobookPreprocess();
         }
+        
+        // Switch to previous chapter
+        function prevChapter() {
+            if (currentChapterIndex > 0) {
+                currentChapterIndex--;
+                const newChapterId = chaptersData[currentChapterIndex].id;
+                switchChapter(newChapterId);
+            }
+        }
+        
+        // Switch to next chapter
+        function nextChapter() {
+            if (currentChapterIndex < chaptersData.length - 1) {
+                currentChapterIndex++;
+                const newChapterId = chaptersData[currentChapterIndex].id;
+                switchChapter(newChapterId);
+            }
+        }
+        
+        // Switch to a specific chapter
+        function switchChapter(newChapterId) {
+            const urlParams = new URLSearchParams(window.location.search);
+            urlParams.set('chapter_id', newChapterId);
+            
+            // Update URL without reloading
+            const newUrl = `${window.location.pathname}?${urlParams.toString()}`;
+            window.history.pushState({ chapterId: newChapterId }, '', newUrl);
+            
+            // Update global chapterId
+            window.currentChapterId = newChapterId;
+            
+            // Load the new chapter content
+            loadChapterContent(newChapterId);
+            
+            // Update navigation buttons
+            updateNavigation();
+            
+            // Update chapter list active state
+            updateChapterListActiveState(newChapterId);
+            
+            // Scroll to top
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        
+        // Open chapter panel
+        function openChapterPanel() {
+            document.getElementById('chapterPanel').classList.add('open');
+            document.getElementById('chapterPanelOverlay').classList.add('open');
+            renderChapterList();
+            
+            // 自动滚动到当前章节
+            setTimeout(() => {
+                const currentChapterId = window.currentChapterId || chapterId;
+                const activeChapterItem = document.querySelector(`.chapter-item[data-chapter-id="${currentChapterId}"]`);
+                if (activeChapterItem) {
+                    activeChapterItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 100);
+        }
+        
+        // Close chapter panel
+        function closeChapterPanel() {
+            document.getElementById('chapterPanel').classList.remove('open');
+            document.getElementById('chapterPanelOverlay').classList.remove('open');
+        }
+        
+        // Render chapter list
+        function renderChapterList(filterText = '') {
+            const chapterList = document.getElementById('chapterList');
+            
+            if (!chaptersData || chaptersData.length === 0) {
+                chapterList.innerHTML = '<div class="loading">暂无章节</div>';
+                return;
+            }
+            
+            let filteredChapters = chaptersData;
+            if (filterText) {
+                filteredChapters = chaptersData.filter(chapter => 
+                    chapter.title.toLowerCase().includes(filterText.toLowerCase())
+                );
+            }
+            
+            let html = '';
+            filteredChapters.forEach((chapter, index) => {
+                const isActive = chapter.id == window.currentChapterId;
+                const globalIndex = chaptersData.indexOf(chapter);
+                html += `
+                    <div class="chapter-item ${isActive ? 'active' : ''}" 
+                         data-chapter-id="${chapter.id}"
+                         onclick="selectChapter(${chapter.id})">
+                        <div class="chapter-item-title">
+                            <span style="color: #999; margin-right: 8px;">${globalIndex + 1}.</span>
+                            ${chapter.title}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            chapterList.innerHTML = html;
+        }
+        
+        // Select a chapter from the list
+        function selectChapter(chapterId) {
+            currentChapterIndex = chaptersData.findIndex(chapter => chapter.id == chapterId);
+            switchChapter(chapterId);
+            closeChapterPanel();
+        }
+        
+        // Update chapter list active state
+        function updateChapterListActiveState(chapterId) {
+            const items = document.querySelectorAll('.chapter-item');
+            items.forEach(item => {
+                if (item.dataset.chapterId == chapterId) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
+            });
+        }
+        
+        // Search chapters
+        function searchChapters(text) {
+            renderChapterList(text);
+        }
 
         let scriptCheckTimer = null;
 
         function setAudiobookDisabled(disabled, text) {
-            const audiobookLink = document.getElementById('audiobookLink');
-            if (!audiobookLink) return;
+            const audiobookBtn = document.getElementById('audiobookBtn');
+            if (!audiobookBtn) return;
             if (disabled) {
-                audiobookLink.classList.add('disabled');
+                audiobookBtn.classList.add('disabled');
                 if (text) {
-                    audiobookLink.textContent = text;
+                    audiobookBtn.title = text;
                 }
             } else {
-                audiobookLink.classList.remove('disabled');
-                audiobookLink.textContent = '🎵 有声书';
+                audiobookBtn.classList.remove('disabled');
+                audiobookBtn.title = '有声书';
             }
         }
 
         function initAudiobookPreprocess() {
-            if (!chapterId) return;
+            const currentChapterId = window.currentChapterId;
+            if (!currentChapterId) return;
 
             // 初始状态：先置灰，避免用户点击
             setAudiobookDisabled(true, '🎵 有声书(检查中...)');
 
-            fetch(`/chapter-script-status?chapter_id=${chapterId}`)
+            fetch(`/chapters/${currentChapterId}/script-status`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.ready) {
-                        // 已有脚本，立即启用按钮
                         setAudiobookDisabled(false);
                     } else {
-                        // 未生成脚本，置灰并请求后台预处理
                         setAudiobookDisabled(true, '🎵 有声书(预处理中...)');
 
-                        fetch('/preprocess-chapter-script', {
+                        fetch(`/chapters/${currentChapterId}/script`, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({ chapter_id: chapterId })
+                            }
                         }).catch(error => {
                             console.error('Error starting preprocess:', error);
                         });
 
-                        // 轮询检查脚本是否已生成
                         if (scriptCheckTimer) {
                             clearInterval(scriptCheckTimer);
                         }
                         scriptCheckTimer = setInterval(() => {
-                            fetch(`/chapter-script-status?chapter_id=${chapterId}`)
+                            fetch(`/chapters/${currentChapterId}/script-status`)
                                 .then(response => response.json())
                                 .then(data => {
                                     if (data.ready) {
@@ -466,8 +698,8 @@
                 });
         }
         
-        // 修改有声书链接点击事件，使用全局播放器
-        document.getElementById('audiobookLink').addEventListener('click', function(e) {
+        // 修改有声书按钮点击事件，使用全局播放器
+        document.getElementById('audiobookBtn').addEventListener('click', function(e) {
             // 如果按钮被置灰，则不响应点击
             if (this.classList.contains('disabled')) {
                 e.preventDefault();
@@ -477,15 +709,15 @@
             e.preventDefault();
             
             // 调用全局播放器播放当前章节
-            if (window.playAudiobook && novelData && chapterId) {
-                const currentChapter = chaptersData.find(ch => ch.id == chapterId);
+            if (window.playAudiobook && novelData && window.currentChapterId) {
+                const currentChapter = chaptersData.find(ch => ch.id == window.currentChapterId);
                 
-                console.log(`请求播放章节 ${chapterId}: ${currentChapter?.title}`);
+                console.log(`请求播放章节 ${window.currentChapterId}: ${currentChapter?.title}`);
                 
                 window.playAudiobook(
                     novelId,
                     novelData.title,
-                    chapterId,
+                    window.currentChapterId,
                     currentChapter?.title || '未知章节',
                     chaptersData
                 );
@@ -495,6 +727,9 @@
         // 页面加载时，检查是否有正在播放的章节
         // 如果当前章节正在播放，不重新设置 src
         window.addEventListener('load', function() {
+            // 设置全局当前章节ID
+            window.currentChapterId = chapterId;
+            
             if (window.globalPlayer && window.globalPlayer.currentState.chapterId == chapterId) {
                 console.log('当前章节正在播放，保持播放状态');
                 // 仅显示播放器，不重新加载
@@ -506,14 +741,56 @@
             
             // 初始化点击切换悬浮按钮
             initToggleButtons();
+            
+            // 初始化章节面板
+            initChapterPanel();
+            
+            // 初始化导航按钮事件
+            initNavigationButtons();
         });
+        
+        // 初始化导航按钮事件
+        function initNavigationButtons() {
+            document.getElementById('prevChapterBtn').addEventListener('click', prevChapter);
+            document.getElementById('nextChapterBtn').addEventListener('click', nextChapter);
+            document.getElementById('tocBtn').addEventListener('click', openChapterPanel);
+            document.getElementById('closeChapterPanel').addEventListener('click', closeChapterPanel);
+            document.getElementById('chapterPanelOverlay').addEventListener('click', closeChapterPanel);
+            document.getElementById('chapterSearch').addEventListener('input', function(e) {
+                searchChapters(e.target.value);
+            });
+            
+            // 返回按钮
+            document.getElementById('backBtn').addEventListener('click', function() {
+                window.location.href = '/novels/list';
+            });
+            
+            // 处理浏览器前进后退
+            window.addEventListener('popstate', function(event) {
+                if (event.state && event.state.chapterId) {
+                    const newChapterIndex = chaptersData.findIndex(chapter => chapter.id == event.state.chapterId);
+                    if (newChapterIndex !== -1) {
+                        currentChapterIndex = newChapterIndex;
+                        window.currentChapterId = event.state.chapterId;
+                        loadChapterContent(event.state.chapterId);
+                        updateNavigation();
+                        updateChapterListActiveState(event.state.chapterId);
+                    }
+                }
+            });
+        }
+        
+        // 初始化章节面板
+        function initChapterPanel() {
+            // 初始渲染章节列表
+            renderChapterList();
+        }
         
         // 字体大小控制功能
         function initFontSizeControl() {
             const chapterContent = document.getElementById('chapterContent');
-            const fontIncreaseBtn = document.getElementById('fontIncrease');
-            const fontDecreaseBtn = document.getElementById('fontDecrease');
-            const fontScrollBottomBtn = document.getElementById('fontScrollBottom');
+            const fontIncreaseBtn = document.getElementById('fontIncreaseBtn');
+            const fontDecreaseBtn = document.getElementById('fontDecreaseBtn');
             
             // 从 localStorage 读取保存的字体大小
             let fontSize = parseInt(localStorage.getItem('readerFontSize')) || 17;
@@ -536,24 +813,16 @@
                     localStorage.setItem('readerFontSize', fontSize);
                 }
             });
-
-            fontScrollBottomBtn.addEventListener('click', function() {
-                window.scrollTo({
-                    top: document.body.scrollHeight,
-                    behavior: 'smooth'
-                });
-            });
         }
         
         // 更新阅读进度
         function updateReadingProgress(novelId, chapterId) {
-            fetch('/update-reading-progress', {
-                method: 'POST',
+            fetch(`/novels/${novelId}/reading-progress`, {
+                method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    novel_id: novelId,
                     chapter_id: chapterId
                 })
             }).catch(error => {
@@ -561,27 +830,43 @@
             });
         }
         
-        // 点击章节内容切换悬浮按钮显示/隐藏
+        // 点击章节内容切换面板显示/隐藏
         function initToggleButtons() {
             const chapterContent = document.getElementById('chapterContent');
-            const fontSizeControl = document.querySelector('.font-size-control');
-            let isButtonsVisible = true;
+            const topPanel = document.getElementById('topPanel');
+            const bottomPanel = document.getElementById('bottomPanel');
+            let isPanelsVisible = false;
             
-            // 点击章节内容切换按钮显示状态
+            // 点击章节内容切换面板显示状态
             chapterContent.addEventListener('click', function(e) {
                 // 防止点击链接等元素时触发
                 if (e.target.tagName === 'A' || e.target.closest('a')) {
                     return;
                 }
                 
-                if (isButtonsVisible) {
-                    // 隐藏按钮
-                    fontSizeControl.classList.add('hidden');
-                    isButtonsVisible = false;
+                if (isPanelsVisible) {
+                    // 隐藏面板
+                    topPanel.classList.remove('visible');
+                    bottomPanel.classList.remove('visible');
+                    isPanelsVisible = false;
                 } else {
-                    // 显示按钮
-                    fontSizeControl.classList.remove('hidden');
-                    isButtonsVisible = true;
+                    // 显示面板
+                    topPanel.classList.add('visible');
+                    bottomPanel.classList.add('visible');
+                    isPanelsVisible = true;
+                }
+            });
+            
+            // 点击面板空白区域时不隐藏（按钮点击会正常触发）
+            topPanel.addEventListener('click', function(e) {
+                if (e.target === topPanel) {
+                    e.stopPropagation();
+                }
+            });
+            
+            bottomPanel.addEventListener('click', function(e) {
+                if (e.target === bottomPanel) {
+                    e.stopPropagation();
                 }
             });
         }

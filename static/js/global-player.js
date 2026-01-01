@@ -158,6 +158,7 @@ class GlobalAudioPlayer {
             
             this.currentState.offset = 0;
             // 如果需要恢复播放位置
+            
             if (position > 0) {
                 
                 this._pendingSeekTime = position;
@@ -219,18 +220,10 @@ class GlobalAudioPlayer {
             .then(() => {
                 if (useHLS) {
                     // 使用HLS
-                    if(isIOS) {
-                        const hlsUrl = `/hls/${chapterId}/stream`;
-                        console.log(`切换到章节 ${chapterId}，使用HLS: ${hlsUrl}`);
-                        this._loadHLS(hlsUrl);
-                    }
-                    else {
-                        this.currentState.offset += position || 0;
-                        const hlsUrl = `/hls/${chapterId}/stream?ts=${this.currentState.offset}`;
-                        console.log(`切换到章节 ${chapterId}，使用HLS: ${hlsUrl}`);
-                        this._loadHLS(hlsUrl);
-                    }
-                    
+                    this.currentState.offset += position || 0;
+                    const hlsUrl = `/hls/${chapterId}/stream?ts=${this.currentState.offset}`;
+                    console.log(`切换到章节 ${chapterId}，使用HLS: ${hlsUrl}`);
+                    this._loadHLS(hlsUrl);
                 } else {
                     // 使用传统流式播放
                     const streamUrl = `/stream/${chapterId}`;
@@ -460,19 +453,16 @@ class GlobalAudioPlayer {
     }
     
     close() {
-        // 停止当前章节的后台生成任务（与暂停区分开）
         if (this.currentState.chapterId) {
-            fetch(`/cancel-generation/${this.currentState.chapterId}`, {
-                method: 'POST'
+            fetch(`/chapters/${this.currentState.chapterId}/generation`, {
+                method: 'DELETE'
             }).catch(err => {
                 console.error('取消后台章节生成任务失败', err);
             });
         }
 
-        // 标记为主动关闭状态，阻止错误重连
         this._isClosed = true;
 
-        // 停止播放进度定时器
         this._stopAudioProgressTimer();
 
         this.pause();

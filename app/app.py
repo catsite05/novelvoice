@@ -7,6 +7,21 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 from functools import wraps
 
+# 加载.env文件
+try:
+    from dotenv import load_dotenv
+    # 从项目根目录加载.env文件
+    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
+        print(f"已加载.env文件: {env_path}")
+    else:
+        print("未找到.env文件，跳过加载")
+except ImportError:
+    print("警告: python-dotenv未安装，无法加载.env文件")
+except Exception as e:
+    print(f"加载.env文件时出错: {e}")
+
 # Get the directory of the current file (app.py)
 current_dir = os.path.dirname(os.path.abspath(__file__))
 # Get the parent directory (project root)
@@ -61,9 +76,7 @@ def login_required(view):
             # 对于期望 JSON 的请求返回 401
             wants_json = request.is_json or 'application/json' in request.headers.get('Accept', '')
             if wants_json or request.path.startswith((
-                '/upload', '/novels', '/chapters', '/chapter-content',
-                '/chapter-script-status', '/preprocess-chapter-script',
-                '/cancel-generation', '/stream', '/play'
+                '/upload', '/novels', '/chapters', '/stream', '/play'
             )):
                 return jsonify({"error": "未登录或登录已过期"}), 401
             # 其他情况重定向到登录页
@@ -276,7 +289,7 @@ def hls_segments(chapter_id, filename):
     response.headers['Cache-Control'] = 'public, max-age=86400'  # 分段文件可以长时间缓存
     return response
 
-@app.route('/novels/delete/<int:novel_id>', methods=['DELETE'])
+@app.route('/novels/<int:novel_id>', methods=['DELETE'])
 @login_required
 def delete_novel_route(novel_id):
     from flask import jsonify
@@ -287,84 +300,62 @@ def delete_novel_route(novel_id):
     except Exception as e:
         return jsonify({"success": False, "message": f"删除失败: {str(e)}"}), 500
 
-@app.route('/chapter-content')
+@app.route('/chapters/<int:chapter_id>', methods=['DELETE'])
 @login_required
-def chapter_content():
+def delete_chapter_route(chapter_id):
+    from flask import jsonify
+    from chapter import delete_chapter
+    try:
+        delete_chapter(chapter_id)
+        return jsonify({"success": True, "message": "章节删除成功"})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"删除失败: {str(e)}"}), 500
+
+@app.route('/chapters/<int:chapter_id>/content')
+@login_required
+def chapter_content(chapter_id):
     from flask import request, jsonify
     from chapter import get_chapter_content
     import traceback
-    # Debug: Print received parameters
-    # print(f"Received parameters: novel_id={request.args.get('novel_id')}, chapter_id={request.args.get('chapter_id')}")
     
-    # Parse parameters with better error handling
+    novel_id_str = request.args.get('novel_id')
+    
+    if not novel_id_str or novel_id_str.lower() == 'null':
+        return jsonify({"error": "Missing or invalid novel_id parameter"}), 400
+    
     try:
-        novel_id_str = request.args.get('novel_id')
-        chapter_id_str = request.args.get('chapter_id')
-        
-        # Check if parameters are missing or null
-        if not novel_id_str or novel_id_str.lower() == 'null' or not chapter_id_str or chapter_id_str.lower() == 'null':
-            return jsonify({"error": "Missing or invalid novel_id or chapter_id parameters"}), 400
-        
-        # Convert to integers
         novel_id = int(novel_id_str)
-        chapter_id = int(chapter_id_str)
     except (ValueError, TypeError) as e:
-        return jsonify({"error": f"Invalid parameter values. Expected integers. novel_id={request.args.get('novel_id')}, chapter_id={request.args.get('chapter_id')}"}), 400
-    
-    # print(f"Parsed parameters: novel_id={novel_id}, chapter_id={chapter_id}")
+        return jsonify({"error": f"Invalid parameter values. Expected integers. novel_id={novel_id_str}"}), 400
     
     try:
-        # print(f"Calling get_chapter_content with novel_id={novel_id}, chapter_id={chapter_id}")
         content = get_chapter_content(novel_id, chapter_id)
-        # print(f"get_chapter_content returned: {content is not None}")
         
         if content is None:
             return jsonify({"error": "Chapter not found"}), 404
         
         return jsonify(content)
     except Exception as e:
-        # Log the error for debugging
         print(f"Error getting chapter content: {str(e)}")
         traceback.print_exc()
         return jsonify({"error": f"Failed to get chapter content: {str(e)}"}), 500
 
-@app.route('/chapter-script-status')
+@app.route('/chapters/<int:chapter_id>/script-status')
 @login_required
-def chapter_script_status():
+def chapter_script_status(chapter_id):
     from flask import request, jsonify
     from audio_generator import is_chapter_script_ready
-
-    chapter_id_str = request.args.get('chapter_id')
-    if not chapter_id_str:
-        return jsonify({"error": "Missing chapter_id parameter"}), 400
-
-    try:
-        chapter_id = int(chapter_id_str)
-    except (ValueError, TypeError):
-        return jsonify({"error": f"Invalid chapter_id: {chapter_id_str}"}), 400
 
     ready = is_chapter_script_ready(chapter_id)
     return jsonify({"ready": ready})
 
 
-@app.route('/preprocess-chapter-script', methods=['POST'])
+@app.route('/chapters/<int:chapter_id>/script', methods=['POST'])
 @login_required
-def preprocess_chapter_script_route():
+def preprocess_chapter_script_route(chapter_id):
     from flask import request, jsonify
     from audio_generator import preprocess_chapter_script
 
-    data = request.get_json(silent=True) or {}
-    chapter_id_value = data.get('chapter_id') or request.args.get('chapter_id')
-
-    if not chapter_id_value:
-        return jsonify({"error": "Missing chapter_id parameter"}), 400
-
-    try:
-        chapter_id = int(chapter_id_value)
-    except (ValueError, TypeError):
-        return jsonify({"error": f"Invalid chapter_id: {chapter_id_value}"}), 400
-
-    # 后台线程执行预处理，避免阻塞请求
     def worker(ch_id):
         with app.app_context():
             preprocess_chapter_script(ch_id)
@@ -375,10 +366,9 @@ def preprocess_chapter_script_route():
     return jsonify({"started": True})
 
 
-@app.route('/cancel-generation/<int:chapter_id>', methods=['POST'])
+@app.route('/chapters/<int:chapter_id>/generation', methods=['DELETE'])
 @login_required
 def cancel_generation(chapter_id):
-    """显式取消指定章节的后台生成任务,用于"停止播放"。"""
     from flask import jsonify
     from audio_generator import cancel_chapter_generation
 
@@ -386,42 +376,36 @@ def cancel_generation(chapter_id):
     return jsonify({"cancelled": bool(cancelled)})
 
 
-@app.route('/update-reading-progress', methods=['POST'])
+@app.route('/novels/<int:novel_id>/reading-progress', methods=['PUT'])
 @login_required
-def update_reading_progress():
-    """更新小说的阅读进度"""
-    from flask import request, jsonify
+def update_reading_progress(novel_id):
+    from datetime import datetime, timezone
     from models import Novel
     
     data = request.get_json(silent=True) or {}
-    novel_id = data.get('novel_id')
     chapter_id = data.get('chapter_id')
     
-    if not novel_id or not chapter_id:
-        return jsonify({"error": "Missing novel_id or chapter_id"}), 400
+    if not chapter_id:
+        return jsonify({"error": "Missing chapter_id"}), 400
     
     try:
-        novel_id = int(novel_id)
         chapter_id = int(chapter_id)
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid parameter values"}), 400
     
-    # 获取小说并检查权限
     novel = Novel.query.get_or_404(novel_id)
     if not g.current_user.is_superuser and novel.user_id != g.current_user.id:
         return jsonify({"error": "无权限"}), 403
     
-    # 更新阅读进度
     novel.last_read_chapter_id = chapter_id
     db.session.commit()
     
     return jsonify({"success": True})
 
 
-@app.route('/get-reading-progress/<int:novel_id>')
+@app.route('/novels/<int:novel_id>/reading-progress', methods=['GET'])
 @login_required
 def get_reading_progress(novel_id):
-    """获取小说的阅读进度"""
     from flask import jsonify
     from models import Novel, Chapter
     
@@ -429,14 +413,12 @@ def get_reading_progress(novel_id):
     if not g.current_user.is_superuser and novel.user_id != g.current_user.id:
         return jsonify({"error": "无权限"}), 403
     
-    # 如果有阅读进度，返回最后阅读的章节ID
     if novel.last_read_chapter_id:
         return jsonify({
             "chapter_id": novel.last_read_chapter_id,
             "has_progress": True
         })
     
-    # 否则返回第一章
     first_chapter = Chapter.query.filter_by(novel_id=novel_id).order_by(Chapter.start_position).first()
     if first_chapter:
         return jsonify({

@@ -61,6 +61,52 @@ def delete_novel(novel_id):
     return True
 
 
+def delete_chapter(chapter_id):
+    # 获取章节对象
+    chapter = Chapter.query.get_or_404(chapter_id)
+    
+    # 获取小说对象以进行权限检查
+    novel = Novel.query.get_or_404(chapter.novel_id)
+    
+    # 权限校验：普通用户只能删除自己小说下的章节
+    user = getattr(g, 'current_user', None)
+    if user is None:
+        abort(401)
+    if not user.is_superuser and novel.user_id != user.id:
+        abort(403)
+    
+    # 获取项目根目录
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    audio_folder = os.path.join(root_dir, 'audio')
+    script_folder = os.path.join(audio_folder, 'script')
+    
+    # 删除该章节的音频文件
+    default_audio_path = os.path.join(audio_folder, f'chapter_{chapter.id}.mp3')
+    if os.path.exists(default_audio_path):
+        try:
+            os.remove(default_audio_path)
+            print(f"已删除音频文件: {default_audio_path}")
+        except Exception as e:
+            print(f"删除音频文件失败 {default_audio_path}: {e}")
+    
+    # 删除该章节的所有配音脚本文件
+    if os.path.exists(script_folder):
+        for script_file in os.listdir(script_folder):
+            if script_file.startswith(f'chapter_{chapter.id}_segment_') and script_file.endswith('_script.json'):
+                script_path = os.path.join(script_folder, script_file)
+                try:
+                    os.remove(script_path)
+                    print(f"已删除配音脚本文件: {script_path}")
+                except Exception as e:
+                    print(f"删除配音脚本文件失败 {script_path}: {e}")
+    
+    # 删除数据库中的章节记录
+    db.session.delete(chapter)
+    db.session.commit()
+    
+    return True
+
+
 def split_novel_into_chapters(file_path, novel_id):
     # Read the uploaded novel
     with open(file_path, 'r', encoding='utf-8') as novel_file:

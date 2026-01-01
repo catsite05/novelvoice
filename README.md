@@ -77,7 +77,7 @@ app/
 
 1. **克隆项目**
 ```bash
-git clone <repository-url>
+git clone https://github.com/catsite05/novelvoice.git
 cd novelvoice
 ```
 

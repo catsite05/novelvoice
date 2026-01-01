@@ -1,0 +1,516 @@
+{% extends "base.html" %}
+
+{% block title %}NovelVoice - 角色管理{% endblock %}
+
+{% block extra_styles %}
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+    
+    body {
+        font-family: 'Microsoft YaHei', Arial, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+    }
+    
+    .container {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        padding: 30px;
+        max-width: 900px;
+        margin: 0 auto;
+    }
+    
+    .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        flex-wrap: wrap;
+    }
+    
+    h1 {
+        color: #333;
+        font-size: 2em;
+    }
+    
+    .nav-links {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+    
+    .nav-links a {
+        color: #667eea;
+        text-decoration: none;
+        padding: 8px 16px;
+        border-radius: 20px;
+        transition: all 0.3s ease;
+        white-space: nowrap;
+    }
+    
+    .nav-links a:hover {
+        background: rgba(102, 126, 234, 0.1);
+    }
+    
+    .novel-info {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    }
+    
+    .novel-info h2 {
+        margin-bottom: 10px;
+        font-size: 1.5em;
+    }
+    
+    .novel-info p {
+        opacity: 0.9;
+    }
+    
+    .character-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 20px;
+    }
+    
+    .character-card {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 15px;
+        padding: 20px;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        position: relative;
+    }
+    
+    .character-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        border-color: #667eea;
+    }
+    
+    .character-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    
+    .character-avatar {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 24px;
+        font-weight: bold;
+        margin-right: 15px;
+    }
+    
+    .character-name {
+        font-size: 1.3em;
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .character-info {
+        margin-bottom: 15px;
+    }
+    
+    .character-info-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 8px;
+        color: #666;
+    }
+    
+    .character-info-item i {
+        width: 20px;
+        margin-right: 8px;
+        color: #667eea;
+    }
+    
+    .character-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+    }
+    
+    .btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.3s ease;
+        flex: 1;
+    }
+    
+    .btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    
+    .btn-danger {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+    }
+    
+    .btn-danger:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(245, 87, 108, 0.4);
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #999;
+    }
+    
+    .empty-state i {
+        font-size: 64px;
+        margin-bottom: 20px;
+        color: #ddd;
+    }
+    
+    .empty-state p {
+        font-size: 1.1em;
+    }
+    
+    /* 编辑弹窗样式 */
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+        backdrop-filter: blur(5px);
+    }
+    
+    .modal.show {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .modal-content {
+        background: white;
+        border-radius: 20px;
+        padding: 30px;
+        width: 90%;
+        max-width: 500px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        animation: modalSlideIn 0.3s ease;
+    }
+    
+    @keyframes modalSlideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-50px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 25px;
+    }
+    
+    .modal-header h2 {
+        color: #333;
+        font-size: 1.5em;
+    }
+    
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 28px;
+        color: #999;
+        cursor: pointer;
+        transition: color 0.3s ease;
+    }
+    
+    .close-btn:hover {
+        color: #333;
+    }
+    
+    .form-group {
+        margin-bottom: 20px;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        color: #333;
+        font-weight: 500;
+    }
+    
+    .form-group input,
+    .form-group select {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e0e0e0;
+        border-radius: 10px;
+        font-size: 14px;
+        transition: border-color 0.3s ease;
+    }
+    
+    .form-group input:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: #667eea;
+    }
+    
+    .form-group input[readonly] {
+        background: #f5f5f5;
+        cursor: not-allowed;
+    }
+    
+    .modal-footer {
+        display: flex;
+        gap: 10px;
+        margin-top: 25px;
+    }
+    
+    .btn-secondary {
+        background: #e0e0e0;
+        color: #333;
+    }
+    
+    .btn-secondary:hover {
+        background: #d0d0d0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="header">
+        <h1>👥 角色管理</h1>
+        <div class="nav-links">
+            <a href="{{ url_for('novels_list') }}">← 返回小说列表</a>
+        </div>
+    </div>
+    
+    <div class="novel-info">
+        <h2>{{ novel.title }}</h2>
+        <p>作者: {{ novel.author or '未知' }}</p>
+    </div>
+    
+    <div id="characterList" class="character-list">
+        <!-- 角色列表将在这里加载 -->
+    </div>
+</div>
+
+<!-- 角色编辑弹窗 -->
+<div id="characterEditModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>✏️ 编辑角色</h2>
+            <button class="close-btn" onclick="closeCharacterEdit()">×</button>
+        </div>
+        <form id="characterEditForm">
+            <input type="hidden" id="editCharacterId">
+            <div class="form-group">
+                <label for="editCharacterName">角色名称</label>
+                <input type="text" id="editCharacterName" readonly>
+            </div>
+            <div class="form-group">
+                <label for="editCharacterGender">性别</label>
+                <select id="editCharacterGender">
+                    <option value="Male">男</option>
+                    <option value="Female">女</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="editCharacterPersonality">个性</label>
+                <select id="editCharacterPersonality">
+                    <!-- 个性选项将根据性别动态加载 -->
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeCharacterEdit()">取消</button>
+                <button type="submit" class="btn btn-primary">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const novelId = {{ novel.id }};
+const voiceConfig = {{ voice_config | tojson | safe }};
+
+function loadCharacters() {
+    fetch(`/characters?novel_id=${novelId}`)
+        .then(response => response.json())
+        .then(data => {
+            const characterList = document.getElementById('characterList');
+            
+            if (data.characters && data.characters.length > 0) {
+                characterList.innerHTML = data.characters.map(char => `
+                    <div class="character-card">
+                        <div class="character-header">
+                            <div class="character-avatar">${char.name.charAt(0)}</div>
+                            <div class="character-name">${char.name}</div>
+                        </div>
+                        <div class="character-info">
+                            <div class="character-info-item">
+                                <i class="fas fa-${char.gender === 'Male' ? 'mars' : 'venus'}"></i>
+                                <span>${char.gender === 'Male' ? '男' : '女'}</span>
+                            </div>
+                            <div class="character-info-item">
+                                <i class="fas fa-smile"></i>
+                                <span>${char.personality}</span>
+                            </div>
+                        </div>
+                        <div class="character-actions">
+                            <button class="btn btn-primary" onclick="openCharacterEdit(${char.id})">编辑</button>
+                            <button class="btn btn-danger" onclick="deleteCharacter(${char.id}, '${char.name}')">删除</button>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                characterList.innerHTML = `
+                    <div class="empty-state" style="grid-column: 1 / -1;">
+                        <i class="fas fa-user-slash"></i>
+                        <p>暂无角色数据</p>
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('Error loading characters:', error);
+            alert('加载角色列表时发生错误！');
+        });
+}
+
+function openCharacterEdit(characterId) {
+    fetch(`/characters/${characterId}`)
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('editCharacterId').value = data.character.id;
+            document.getElementById('editCharacterName').value = data.character.name;
+            document.getElementById('editCharacterGender').value = data.character.gender;
+            
+            loadPersonalities(data.character.gender);
+            
+            setTimeout(() => {
+                document.getElementById('editCharacterPersonality').value = data.character.personality;
+            }, 100);
+            
+            document.getElementById('characterEditModal').classList.add('show');
+        })
+        .catch(error => {
+            console.error('Error loading character:', error);
+            alert('加载角色信息时发生错误！');
+        });
+}
+
+function closeCharacterEdit() {
+    document.getElementById('characterEditModal').classList.remove('show');
+}
+
+function loadPersonalities(gender) {
+    const personalitySelect = document.getElementById('editCharacterPersonality');
+    personalitySelect.innerHTML = '';
+    
+    if (voiceConfig.voices && voiceConfig.voices[gender]) {
+        Object.keys(voiceConfig.voices[gender]).forEach(personality => {
+            const option = document.createElement('option');
+            option.value = personality;
+            option.textContent = personality;
+            personalitySelect.appendChild(option);
+        });
+    }
+}
+
+document.getElementById('editCharacterGender').addEventListener('change', function() {
+    loadPersonalities(this.value);
+});
+
+document.getElementById('characterEditForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const characterId = document.getElementById('editCharacterId').value;
+    const formData = {
+        gender: document.getElementById('editCharacterGender').value,
+        personality: document.getElementById('editCharacterPersonality').value
+    };
+    
+    fetch(`/characters/${characterId}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('角色更新成功！');
+            closeCharacterEdit();
+            loadCharacters();
+        } else {
+            alert(`更新失败: ${data.message || '未知错误'}`);
+        }
+    })
+    .catch(error => {
+        console.error('Error updating character:', error);
+        alert('更新角色时发生错误！');
+    });
+});
+
+function deleteCharacter(characterId, characterName) {
+    if (confirm(`确定要删除角色"${characterName}"吗？此操作不可恢复！`)) {
+        fetch(`/characters/${characterId}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('角色删除成功！');
+                loadCharacters();
+            } else {
+                alert(`删除失败: ${data.message || '未知错误'}`);
+            }
+        })
+        .catch(error => {
+            console.error('Error deleting character:', error);
+            alert('删除角色时发生错误！');
+        });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadCharacters();
+});
+</script>
+{% endblock %}

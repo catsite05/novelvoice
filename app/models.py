@@ -50,10 +50,13 @@ class Chapter(db.Model):
 
 class Character(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False, unique=True)
+    name = db.Column(db.String(100), nullable=False)
     gender = db.Column(db.String(10), nullable=False)  # male or female
     personality = db.Column(db.String(50), nullable=False)  # From the given options
     voice = db.Column(db.String(100), nullable=True)  # Voice identifier from voice.json
+    novel_id = db.Column(db.Integer, db.ForeignKey('novel.id'), nullable=False)
+    
+    novel = db.relationship('Novel', backref=db.backref('characters', lazy=True))
     
     def __repr__(self):
         return f'<Character {self.name}>'

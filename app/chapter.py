@@ -1,5 +1,6 @@
 import re
 import os
+import shutil
 from flask import g, abort
 from models import Novel, Chapter, db
 
@@ -43,8 +44,34 @@ def delete_novel(novel_id):
                     except Exception as e:
                         print(f"删除配音脚本文件失败 {script_path}: {e}")
     
+    # 删除小说的专属音频文件夹
+    novel_audio_folder = os.path.join(audio_folder, f'novel-{novel_id}')
+    if os.path.exists(novel_audio_folder):
+        try:
+            shutil.rmtree(novel_audio_folder)
+            print(f"已删除小说音频文件夹: {novel_audio_folder}")
+        except Exception as e:
+            print(f"删除小说音频文件夹失败 {novel_audio_folder}: {e}")
+    
+    # 删除小说的专属脚本文件夹
+    novel_script_folder = os.path.join(script_folder, f'novel-{novel_id}')
+    if os.path.exists(novel_script_folder):
+        try:
+            shutil.rmtree(novel_script_folder)
+            print(f"已删除小说脚本文件夹: {novel_script_folder}")
+        except Exception as e:
+            print(f"删除小说脚本文件夹失败 {novel_script_folder}: {e}")
+    
     # 删除章节记录
     Chapter.query.filter_by(novel_id=novel_id).delete()
+    
+    # 删除该小说的所有音频进度记录
+    from models import AudioProgress
+    AudioProgress.query.filter_by(novel_id=novel_id).delete()
+    
+    # 删除该小说的所有角色记录
+    from models import Character
+    Character.query.filter_by(novel_id=novel_id).delete()
     
     # 删除小说文件
     if os.path.exists(novel.file_path):

@@ -181,6 +181,22 @@ def novels_list():
     from flask import render_template
     return render_template('novels.html')
 
+@app.route('/novels/<int:novel_id>/characters')
+@login_required
+def characters_page(novel_id):
+    from flask import render_template, abort
+    from models import Novel
+    from character import get_voice_config
+    
+    novel = Novel.query.get_or_404(novel_id)
+    
+    if not g.current_user.is_superuser and novel.user_id != g.current_user.id:
+        abort(403)
+    
+    voice_config = get_voice_config()
+    
+    return render_template('characters.html', novel=novel, voice_config=voice_config)
+
 @app.route('/player')
 @login_required
 def player():
@@ -566,6 +582,70 @@ def update_novel_llm_config(novel_id):
     db.session.commit()
     
     return jsonify({"success": True, "message": "LLM配置更新成功"})
+
+
+@app.route('/characters', methods=['GET'])
+@login_required
+def list_characters_route():
+    """获取角色列表"""
+    from flask import request
+    from character import list_characters
+    
+    novel_id_str = request.args.get('novel_id')
+    novel_id = int(novel_id_str) if novel_id_str else None
+    
+    return jsonify(list_characters(novel_id))
+
+
+@app.route('/characters/<int:character_id>', methods=['GET'])
+@login_required
+def get_character_route(character_id):
+    """获取单个角色信息"""
+    from flask import jsonify
+    from character import get_character
+    
+    character = get_character(character_id)
+    if not character:
+        return jsonify({"error": "角色不存在"}), 404
+    
+    return jsonify(character)
+
+
+@app.route('/characters/<int:character_id>', methods=['PUT'])
+@login_required
+def update_character_route(character_id):
+    """更新角色信息"""
+    from flask import request, jsonify
+    from character import update_character
+    
+    data = request.get_json(silent=True) or {}
+    gender = data.get('gender')
+    personality = data.get('personality')
+    
+    if not gender or not personality:
+        return jsonify({"error": "缺少必要参数"}), 400
+    
+    result = update_character(character_id, gender, personality)
+    
+    if not result.get('success'):
+        return jsonify(result), 400
+    
+    return jsonify(result)
+
+
+@app.route('/characters/<int:character_id>', methods=['DELETE'])
+@login_required
+def delete_character_route(character_id):
+    """删除角色"""
+    from flask import jsonify
+    from character import delete_character
+    
+    result = delete_character(character_id)
+    
+    if not result.get('success'):
+        return jsonify(result), 400
+    
+    return jsonify(result)
 
 
 if __name__ == '__main__':

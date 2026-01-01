@@ -363,7 +363,8 @@ def preprocess_chapter_script(chapter_id):
         voice_script = generate_voice_script(first_segment, stream=False, 
                                             llm_api_key=llm_api_key,
                                             llm_base_url=llm_base_url,
-                                            llm_model=llm_model)
+                                            llm_model=llm_model,
+                                            novel_id=novel.id)
         
         # 确保脚本缓存目录存在
         if not os.path.exists(script_folder):
@@ -560,7 +561,8 @@ def generate_chapter_audio(app, chapter_id, user_id, audio_path):
                                 voice_script = generate_voice_script(segment, stream=False,
                                                                     llm_api_key=llm_api_key,
                                                                     llm_base_url=llm_base_url,
-                                                                    llm_model=llm_model)
+                                                                    llm_model=llm_model,
+                                                                    novel_id=novel.id)
                                 break  # 成功则跳出重试循环
                             except Exception as e:
                                 last_error = e

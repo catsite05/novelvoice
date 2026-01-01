@@ -335,8 +335,8 @@
             }
             
             .chapter-panel {
-                width: 100%;
-                right: -100%;
+                width: 75%;
+                right: -75%;
             }
         }
     </style>
@@ -468,7 +468,12 @@
                 .then(data => {
                     if (data.content) {
                         document.getElementById('chapterTitle').textContent = data.title;
-                        document.getElementById('chapterContent').innerHTML = `<p>${data.content.replace(/\n/g, '</p><p>')}</p>`;
+                        // 处理段落内容：去掉开头的多余空格，保持合理的缩进
+                        const processedContent = data.content
+                            .replace(/\n/g, '</p><p>')
+                            .replace(/<p>\s+/g, '<p>') // 去掉每个段落开头的空格
+                            .trim();
+                        document.getElementById('chapterContent').innerHTML = `<p>${processedContent}</p>`;
                         
                         // 更新阅读进度
                         updateReadingProgress(novelId, chapterId);

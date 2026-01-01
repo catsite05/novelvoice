@@ -198,6 +198,15 @@
             box-shadow: 0 8px 25px rgba(156, 39, 176, 0.4);
         }
         
+        .character-btn {
+            background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+        }
+        
+        .character-btn:hover {
+            background: linear-gradient(135deg, #F57C00 0%, #EF6C00 100%);
+            box-shadow: 0 8px 25px rgba(255, 152, 0, 0.4);
+        }
+        
         /* 波纹动画效果 */
         .action-btn::after {
             content: '';
@@ -530,6 +539,9 @@
                                 <button class="action-btn toc-btn" onclick="openTOC(event, ${novel.id})" title="章节列表">
                                     <i class="fas fa-list"></i>
                                 </button>
+                                <button class="action-btn character-btn" onclick="event.stopPropagation(); window.location.href='/novels/${novel.id}/characters'" title="角色管理">
+                                    <i class="fas fa-users"></i>
+                                </button>
                                 <button class="action-btn config-btn" onclick="openLLMConfig(event, ${novel.id}, '${novel.title}')" title="LLM配置">
                                     <i class="fas fa-cog"></i>
                                 </button>
@@ -702,9 +714,17 @@
         
         // 点击弹窗外部关闭
         window.onclick = function(event) {
-            const modal = document.getElementById('llmConfigModal');
-            if (event.target === modal) {
+            const llmModal = document.getElementById('llmConfigModal');
+            const characterModal = document.getElementById('characterManagerModal');
+            const editModal = document.getElementById('characterEditModal');
+            if (event.target === llmModal) {
                 closeLLMConfig();
+            }
+            if (event.target === characterModal) {
+                closeCharacterManager();
+            }
+            if (event.target === editModal) {
+                closeCharacterEdit();
             }
         };
     </script>

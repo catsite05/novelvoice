@@ -2,7 +2,7 @@ import json
 from llm_client import LLMClient
 from models import Character, db
 
-def generate_voice_script(content, stream=False, llm_api_key=None, llm_base_url=None, llm_model=None):
+def generate_voice_script(content, stream=False, llm_api_key=None, llm_base_url=None, llm_model=None, novel_id=None):
     """
     调用LLM生成配音脚本，并进行后处理转换
     
@@ -12,6 +12,7 @@ def generate_voice_script(content, stream=False, llm_api_key=None, llm_base_url=
         llm_api_key (str): LLM API密钥（可选，用于小说专有配置）
         llm_base_url (str): LLM Base URL（可选，用于小说专有配置）
         llm_model (str): LLM模型名称（可选，用于小说专有配置）
+        novel_id (int): 小说ID（可选，用于关联角色到特定小说）
         
     Returns:
         list: 转换后的配音脚本列表
@@ -23,16 +24,17 @@ def generate_voice_script(content, stream=False, llm_api_key=None, llm_base_url=
     voice_script = llm_client.generate_voice_script(content, stream=stream)
     
     # 转换配音脚本为目标格式
-    converted_script = convert_voice_script(voice_script)
+    converted_script = convert_voice_script(voice_script, novel_id=novel_id)
     
     return converted_script
 
-def convert_voice_script(voice_script):
+def convert_voice_script(voice_script, novel_id=None):
     """
     将LLM返回的配音脚本转换为目标格式
     
     Args:
         voice_script (dict): LLM返回的配音脚本
+        novel_id (int): 小说ID（可选，用于关联角色到特定小说）
         
     Returns:
         list: 转换后的配音脚本列表
@@ -49,7 +51,10 @@ def convert_voice_script(voice_script):
     if 'charactors' in voice_script:
         for char in voice_script['charactors']:
             # 检查数据库中是否已存在该角色
-            existing_character = Character.query.filter_by(name=char['name']).first()
+            query = Character.query.filter_by(name=char['name'])
+            if novel_id is not None:
+                query = query.filter_by(novel_id=novel_id)
+            existing_character = query.first()
             
             # 如果数据库中没有该角色，则添加到数据库
             if not existing_character:
@@ -70,7 +75,8 @@ def convert_voice_script(voice_script):
                     name=char['name'],
                     gender=gender,
                     personality=personality,
-                    voice=voice
+                    voice=voice,
+                    novel_id=novel_id
                 )                
                 db.session.add(new_character)
         

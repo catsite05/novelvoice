@@ -740,8 +740,8 @@ def generate_chapter_audio(app, chapter_id, user_id, audio_path):
 
                             except Exception as e:
                                 print(f"[音频生成] 第 {segment_index+1} 段生成失败: {e}")
-                                import traceback
-                                traceback.print_exc()
+                                # import traceback
+                                # traceback.print_exc()
                                 error_container['error'] = str(e)
                                 continue # ！！一般是脚本有错误，目前只是简单地先跳过这一段
 

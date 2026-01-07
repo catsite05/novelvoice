@@ -29,7 +29,7 @@ hls_cache/
 # Environment Variables
 .env
 .env.local
-.env.*
+#.env.*
 
 # IDE & Editor
 .vscode/

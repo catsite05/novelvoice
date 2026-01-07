@@ -416,14 +416,14 @@ function openCharacterEdit(characterId) {
     fetch(`/characters/${characterId}`)
         .then(response => response.json())
         .then(data => {
-            document.getElementById('editCharacterId').value = data.character.id;
-            document.getElementById('editCharacterName').value = data.character.name;
-            document.getElementById('editCharacterGender').value = data.character.gender;
+            document.getElementById('editCharacterId').value = data.id;
+            document.getElementById('editCharacterName').value = data.name;
+            document.getElementById('editCharacterGender').value = data.gender;
             
-            loadPersonalities(data.character.gender);
+            loadPersonalities(data.gender);
             
             setTimeout(() => {
-                document.getElementById('editCharacterPersonality').value = data.character.personality;
+                document.getElementById('editCharacterPersonality').value = data.personality;
             }, 100);
             
             document.getElementById('characterEditModal').classList.add('show');
